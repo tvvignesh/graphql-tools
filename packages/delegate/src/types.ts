@@ -15,10 +15,18 @@ import {
 
 import DataLoader from 'dataloader';
 
-import { Request, TypeMap, ExecutionResult } from '@graphql-tools/utils';
+import { Request, TypeMap, ExecutionResult, AsyncExecutionResult } from '@graphql-tools/utils';
+
+import {
+  OBJECT_SUBSCHEMA_SYMBOL,
+  FIELD_SUBSCHEMA_MAP_SYMBOL,
+  UNPATHED_ERRORS_SYMBOL,
+  RECEIVER_SYMBOL,
+  PATH_SYMBOL,
+} from './symbols';
 
 import { Subschema } from './Subschema';
-import { OBJECT_SUBSCHEMA_SYMBOL, FIELD_SUBSCHEMA_MAP_SYMBOL, UNPATHED_ERRORS_SYMBOL } from './symbols';
+import { Receiver } from './Receiver';
 
 export type SchemaTransform = (
   originalWrappingSchema: GraphQLSchema,
@@ -139,7 +147,10 @@ export type SyncExecutor = <TReturn = Record<string, any>, TArgs = Record<string
 ) => ExecutionResult<TReturn>;
 export type Executor = <TReturn = Record<string, any>, TArgs = Record<string, any>, TContext = Record<string, any>>(
   params: ExecutionParams<TArgs, TContext>
-) => ExecutionResult<TReturn> | Promise<ExecutionResult<TReturn>>;
+) =>
+  | ExecutionResult<TReturn>
+  | AsyncIterableIterator<AsyncExecutionResult<TReturn>>
+  | Promise<AsyncIterableIterator<AsyncExecutionResult<TReturn>> | ExecutionResult<TReturn>>;
 export type Subscriber = <TReturn = Record<string, any>, TArgs = Record<string, any>, TContext = Record<string, any>>(
   params: ExecutionParams<TArgs, TContext>
 ) => Promise<AsyncIterator<ExecutionResult<TReturn>> | ExecutionResult<TReturn>>;
@@ -212,4 +223,12 @@ export interface ExternalObject {
   [OBJECT_SUBSCHEMA_SYMBOL]: GraphQLSchema | SubschemaConfig;
   [FIELD_SUBSCHEMA_MAP_SYMBOL]: Record<string, GraphQLSchema | SubschemaConfig>;
   [UNPATHED_ERRORS_SYMBOL]: Array<GraphQLError>;
+  [RECEIVER_SYMBOL]?: Receiver;
+  [PATH_SYMBOL]?: number;
+}
+
+export interface IncrementalResult {
+  key: any;
+  [RECEIVER_SYMBOL]: Receiver;
+  [PATH_SYMBOL]: number;
 }

@@ -22,11 +22,12 @@
     "input": "./src/index.ts"
   },
   "dependencies": {
+    "@ardatan/aggregate-error": "0.0.6",
     "@graphql-tools/batch-execute": "^7.0.0",
     "@graphql-tools/schema": "^7.0.0",
     "@graphql-tools/utils": "^7.1.6",
-    "@ardatan/aggregate-error": "0.0.6",
     "dataloader": "2.0.0",
+    "graphql-subscriptions": "^1.1.0",
     "is-promise": "4.0.0",
     "tslib": "~2.1.0"
   },
