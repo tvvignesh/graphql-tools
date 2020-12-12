@@ -37,7 +37,7 @@ export function introspectSchema<TExecutor extends AsyncExecutor | SyncExecutor>
   const introspectionResult = (executor as Executor)<IntrospectionQuery>({
     document: parsedIntrospectionQuery,
     context,
-  });
+  }) as Promise<ExecutionResult<IntrospectionQuery>> | ExecutionResult<IntrospectionQuery>;
   if (isPromise(introspectionResult)) {
     return introspectionResult.then(introspection => getSchemaFromIntrospection(introspection)) as any;
   }

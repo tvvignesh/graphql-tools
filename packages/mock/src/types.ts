@@ -1,6 +1,6 @@
 import { GraphQLFieldResolver, GraphQLType, GraphQLSchema } from 'graphql';
 
-import { ExecutionResult } from '@graphql-tools/utils';
+import { ExecutionResult, AsyncExecutionResult } from '@graphql-tools/utils';
 
 // XXX on mocks, args are optional, Not sure if a bug.
 export type IMockFn = GraphQLFieldResolver<any, any>;
@@ -36,5 +36,8 @@ export interface IMockServer {
    * @param query GraphQL query to execute
    * @param vars Variables
    */
-  query: (query: string, vars?: Record<string, any>) => Promise<ExecutionResult>;
+  query: (
+    query: string,
+    vars?: Record<string, any>
+  ) => Promise<ExecutionResult | AsyncIterableIterator<AsyncExecutionResult>>;
 }
