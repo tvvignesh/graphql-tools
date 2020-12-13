@@ -2,19 +2,22 @@ import { ExecutionResult, AsyncExecutionResult } from '@graphql-tools/utils';
 
 import { Receiver } from './Receiver';
 
-import { RECEIVER_SYMBOL } from './symbols';
+import { PATH_PREFIX_SYMBOL, RECEIVER_SYMBOL } from './symbols';
 import { IncrementalResult } from './types';
 
 export async function asyncIterableToIncrementalResult(
-  asyncIterable: AsyncIterable<AsyncExecutionResult<Record<string, any>>>
-): Promise<IncrementalResult & ExecutionResult> {
-  const asyncIterator = asyncIterable[Symbol.asyncIterator]();
-  const payload = await asyncIterator.next();
-  const result = payload.value;
+  asyncIterable: AsyncIterable<AsyncExecutionResult<Record<string, any>>>,
+  resultTransformer: (originalResult: ExecutionResult) => any,
+  pathPrefix: number
+): Promise<IncrementalResult> {
+  const receiver = new Receiver(asyncIterable, resultTransformer);
 
-  result[RECEIVER_SYMBOL] = new Receiver(asyncIterable, result);
+  const initialResult = await receiver.getInitialResult();
 
-  return result;
+  initialResult[RECEIVER_SYMBOL] = receiver;
+  initialResult[PATH_PREFIX_SYMBOL] = pathPrefix;
+
+  return initialResult;
 }
 
 export function isIncrementalResult(result: any): result is IncrementalResult {

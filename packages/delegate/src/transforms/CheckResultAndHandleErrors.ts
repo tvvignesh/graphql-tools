@@ -13,8 +13,6 @@ import { getResponseKeyFromInfo, ExecutionResult, relocatedError } from '@graphq
 
 import { SubschemaConfig, Transform, DelegationContext } from '../types';
 import { resolveExternalValue } from '../resolveExternalValue';
-import { isIncrementalResult } from '../incrementalResult';
-import { RECEIVER_SYMBOL, PATH_PREFIX_SYMBOL } from '../symbols';
 
 export default class CheckResultAndHandleErrors implements Transform {
   public transformResult(
@@ -45,22 +43,12 @@ export function checkResultAndHandleErrors(
   skipTypeMerging?: boolean,
   onLocatedError?: (originalError: GraphQLError) => GraphQLError
 ): any {
-  let responsePath: Array<string | number>;
-  if (info != null) {
-    responsePath = responsePathAsArray(info.path);
-  }
-
   const { data, unpathedErrors } = mergeDataAndErrors(
     result.data == null ? undefined : result.data[responseKey],
     result.errors == null ? [] : result.errors,
-    info ? responsePath : undefined,
+    info ? responsePathAsArray(info.path) : undefined,
     onLocatedError
   );
-
-  if (isIncrementalResult(result)) {
-    data[RECEIVER_SYMBOL] = result[RECEIVER_SYMBOL];
-    data[PATH_PREFIX_SYMBOL] = responsePath ? responsePath.length - 1 : 0;
-  }
 
   return resolveExternalValue(data, unpathedErrors, subschema, context, info, returnType, skipTypeMerging);
 }

@@ -11,6 +11,7 @@ import {
   GraphQLOutputType,
   GraphQLObjectType,
   GraphQLResolveInfo,
+  responsePathAsArray,
 } from 'graphql';
 
 import isPromise from 'is-promise';
@@ -175,11 +176,19 @@ export function delegateRequest({
 
     if (isPromise(executionResult)) {
       return executionResult.then(resolvedResult =>
-        handleExecutionResult(resolvedResult, originalResult => transformer.transformResult(originalResult))
+        handleExecutionResult(
+          resolvedResult,
+          originalResult => transformer.transformResult(originalResult),
+          info ? responsePathAsArray(info.path).length - 1 : 0
+        )
       );
     }
 
-    return handleExecutionResult(executionResult, originalResult => transformer.transformResult(originalResult));
+    return handleExecutionResult(
+      executionResult,
+      originalResult => transformer.transformResult(originalResult),
+      info ? responsePathAsArray(info.path).length - 1 : 0
+    );
   }
 
   const subscriber =
@@ -198,10 +207,11 @@ export function delegateRequest({
 
 function handleExecutionResult(
   executionResult: ExecutionResult | AsyncIterableIterator<AsyncExecutionResult>,
-  resultTransformer: (originalResult: ExecutionResult) => any
+  resultTransformer: (originalResult: ExecutionResult) => any,
+  pathPrefix: number
 ): any {
   if (isAsyncIterable(executionResult)) {
-    return asyncIterableToIncrementalResult(executionResult).then(initialResult => resultTransformer(initialResult));
+    return asyncIterableToIncrementalResult(executionResult, resultTransformer, pathPrefix);
   }
 
   return resultTransformer(executionResult);
