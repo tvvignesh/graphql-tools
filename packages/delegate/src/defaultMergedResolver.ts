@@ -6,7 +6,7 @@ import { resolveExternalValue } from './resolveExternalValue';
 import { getSubschema, getUnpathedErrors, isExternalObject } from './externalObjects';
 import { ExternalObject } from './types';
 import { isIncrementalResult } from './incrementalResult';
-import { PATH_SYMBOL, RECEIVER_SYMBOL } from './symbols';
+import { PATH_PREFIX_SYMBOL, RECEIVER_SYMBOL } from './symbols';
 
 /**
  * Resolver that knows how to:
@@ -37,7 +37,7 @@ export function defaultMergedResolver(
   const subschema = getSubschema(parent, responseKey);
 
   if (data === undefined && isIncrementalResult(parent)) {
-    const path = responsePathAsArray(info.path).slice(parent[PATH_SYMBOL]);
+    const path = responsePathAsArray(info.path).slice(parent[PATH_PREFIX_SYMBOL]);
     return parent[RECEIVER_SYMBOL].request(path).then(incrementalData =>
       resolveExternalValue(incrementalData, unpathedErrors, subschema, context, info)
     );

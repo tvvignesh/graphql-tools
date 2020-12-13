@@ -14,7 +14,7 @@ import { getResponseKeyFromInfo, ExecutionResult, relocatedError } from '@graphq
 import { SubschemaConfig, Transform, DelegationContext } from '../types';
 import { resolveExternalValue } from '../resolveExternalValue';
 import { isIncrementalResult } from '../incrementalResult';
-import { RECEIVER_SYMBOL, PATH_SYMBOL } from '../symbols';
+import { RECEIVER_SYMBOL, PATH_PREFIX_SYMBOL } from '../symbols';
 
 export default class CheckResultAndHandleErrors implements Transform {
   public transformResult(
@@ -59,7 +59,7 @@ export function checkResultAndHandleErrors(
 
   if (isIncrementalResult(result)) {
     data[RECEIVER_SYMBOL] = result[RECEIVER_SYMBOL];
-    data[PATH_SYMBOL] = responsePath ? responsePath.length - 1 : 0;
+    data[PATH_PREFIX_SYMBOL] = responsePath ? responsePath.length - 1 : 0;
   }
 
   return resolveExternalValue(data, unpathedErrors, subschema, context, info, returnType, skipTypeMerging);
