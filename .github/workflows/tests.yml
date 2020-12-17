@@ -34,7 +34,7 @@ jobs:
       - name: Lint
         run: yarn lint
   build:
-    name: Build on ${{matrix.os}} GraphQL v${{matrix.graphql_version_or_tag}}
+    name: Build on ${{matrix.os}} GraphQL ${{matrix.graphql_version_or_tag}}
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -56,14 +56,14 @@ jobs:
           key: ${{ runner.os }}-14-${{matrix.graphql_version_or_tag}}-yarn-${{ hashFiles('yarn.lock') }}
           restore-keys: |
             ${{ runner.os }}-14-${{matrix.graphql_version_or_tag}}-yarn
-      - name: Use GraphQL v${{matrix.graphql_version_or_tag}}
+      - name: Use GraphQL ${{matrix.graphql_version_or_tag}}
         run: node ./scripts/match-graphql.js ${{matrix.graphql_version_or_tag}}
       - name: Install Dependencies using Yarn
         run: yarn install --ignore-engines && git checkout yarn.lock
       - name: Build
         run: yarn ts:transpile
   test:
-    name: Test on ${{matrix.os}}, Node ${{matrix.node_version}} and GraphQL v${{matrix.graphql_version_or_tag}}
+    name: Test on ${{matrix.os}}, Node ${{matrix.node_version}} and GraphQL ${{matrix.graphql_version_or_tag}}
     runs-on: ${{matrix.os}}
     strategy:
       matrix:
@@ -87,7 +87,7 @@ jobs:
           key: ${{ runner.os }}-${{matrix.node_version}}-${{matrix.graphql_version_or_tag}}-yarn-${{ hashFiles('yarn.lock') }}
           restore-keys: |
             ${{ runner.os }}-${{matrix.node_version}}-${{matrix.graphql_version_or_tag}}-yarn
-      - name: Use GraphQL v${{matrix.graphql_version_or_tag}}
+      - name: Use GraphQL ${{matrix.graphql_version_or_tag}}
         run: node ./scripts/match-graphql.js ${{matrix.graphql_version_or_tag}}
       - name: Install Dependencies using Yarn
         run: yarn install --ignore-engines && git checkout yarn.lock
