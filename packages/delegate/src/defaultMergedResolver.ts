@@ -33,15 +33,13 @@ export function defaultMergedResolver(
   const data = parent[responseKey];
   const unpathedErrors = getUnpathedErrors(parent);
   const subschema = getSubschema(parent, responseKey);
+  const receiver = getReceiver(parent);
 
-  if (data === undefined) {
-    const receiver = getReceiver(parent);
-    if (receiver) {
-      return receiver
-        .request(responsePathAsArray(info.path))
-        .then(incrementalData => resolveExternalValue(incrementalData, unpathedErrors, subschema, context, info));
-    }
+  if (data === undefined && receiver !== undefined) {
+    return receiver
+      .request(responsePathAsArray(info.path))
+      .then(patchData => resolveExternalValue(patchData, unpathedErrors, subschema, context, info, receiver));
   }
 
-  return resolveExternalValue(data, unpathedErrors, subschema, context, info);
+  return resolveExternalValue(data, unpathedErrors, subschema, context, info, receiver);
 }

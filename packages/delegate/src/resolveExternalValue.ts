@@ -20,6 +20,7 @@ import { annotateExternalObject, isExternalObject } from './externalObjects';
 import { getFieldsNotInSubschema } from './getFieldsNotInSubschema';
 import { mergeFields } from './mergeFields';
 import { Subschema } from './Subschema';
+import { Receiver } from './Receiver';
 
 export function resolveExternalValue(
   result: any,
@@ -27,7 +28,8 @@ export function resolveExternalValue(
   subschema: GraphQLSchema | SubschemaConfig,
   context: Record<string, any>,
   info: GraphQLResolveInfo,
-  returnType = info.returnType,
+  receiver?: Receiver,
+  returnType = info?.returnType,
   skipTypeMerging?: boolean
 ): any {
   const type = getNullableType(returnType);
@@ -43,9 +45,9 @@ export function resolveExternalValue(
   if (isLeafType(type)) {
     return type.parseValue(result);
   } else if (isCompositeType(type)) {
-    return resolveExternalObject(type, result, unpathedErrors, subschema, context, info, skipTypeMerging);
+    return resolveExternalObject(type, result, unpathedErrors, subschema, context, info, receiver, skipTypeMerging);
   } else if (isListType(type)) {
-    return resolveExternalList(type, result, unpathedErrors, subschema, context, info, skipTypeMerging);
+    return resolveExternalList(type, result, unpathedErrors, subschema, context, info, receiver, skipTypeMerging);
   }
 }
 
@@ -56,6 +58,7 @@ function resolveExternalObject(
   subschema: GraphQLSchema | SubschemaConfig,
   context: Record<string, any>,
   info: GraphQLResolveInfo,
+  receiver?: Receiver,
   skipTypeMerging?: boolean
 ) {
   // if we have already resolved this object, for example, when the identical object appears twice
@@ -64,7 +67,7 @@ function resolveExternalObject(
     return object;
   }
 
-  annotateExternalObject(object, unpathedErrors, subschema);
+  annotateExternalObject(object, unpathedErrors, subschema, receiver);
 
   const stitchingInfo: StitchingInfo = info?.schema.extensions?.stitchingInfo;
   if (skipTypeMerging || !stitchingInfo) {
@@ -120,6 +123,7 @@ function resolveExternalList(
   subschema: GraphQLSchema | SubschemaConfig,
   context: Record<string, any>,
   info: GraphQLResolveInfo,
+  receiver?: Receiver,
   skipTypeMerging?: boolean
 ) {
   return list.map(listMember =>
@@ -130,6 +134,7 @@ function resolveExternalList(
       subschema,
       context,
       info,
+      receiver,
       skipTypeMerging
     )
   );
@@ -142,6 +147,7 @@ function resolveExternalListMember(
   subschema: GraphQLSchema | SubschemaConfig,
   context: Record<string, any>,
   info: GraphQLResolveInfo,
+  receiver?: Receiver,
   skipTypeMerging?: boolean
 ): any {
   if (listMember instanceof Error) {
@@ -155,9 +161,9 @@ function resolveExternalListMember(
   if (isLeafType(type)) {
     return type.parseValue(listMember);
   } else if (isCompositeType(type)) {
-    return resolveExternalObject(type, listMember, unpathedErrors, subschema, context, info, skipTypeMerging);
+    return resolveExternalObject(type, listMember, unpathedErrors, subschema, context, info, receiver, skipTypeMerging);
   } else if (isListType(type)) {
-    return resolveExternalList(type, listMember, unpathedErrors, subschema, context, info, skipTypeMerging);
+    return resolveExternalList(type, listMember, unpathedErrors, subschema, context, info, receiver, skipTypeMerging);
   }
 }
 

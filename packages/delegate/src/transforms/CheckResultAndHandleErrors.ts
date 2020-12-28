@@ -1,20 +1,11 @@
-import {
-  GraphQLResolveInfo,
-  GraphQLOutputType,
-  GraphQLSchema,
-  GraphQLError,
-  responsePathAsArray,
-  locatedError,
-} from 'graphql';
+import { GraphQLError, responsePathAsArray, locatedError } from 'graphql';
 
 import AggregateError from '@ardatan/aggregate-error';
 
 import { getResponseKeyFromInfo, ExecutionResult, relocatedError } from '@graphql-tools/utils';
 
-import { SubschemaConfig, Transform, DelegationContext } from '../types';
+import { Transform, DelegationContext } from '../types';
 import { resolveExternalValue } from '../resolveExternalValue';
-import { Receiver } from '../Receiver';
-import { setReceiver } from '../externalObjects';
 
 export default class CheckResultAndHandleErrors implements Transform {
   public transformResult(
@@ -22,53 +13,28 @@ export default class CheckResultAndHandleErrors implements Transform {
     delegationContext: DelegationContext,
     _transformationContext: Record<string, any>
   ): ExecutionResult {
-    return checkResultAndHandleErrors(
-      originalResult,
-      delegationContext.context != null ? delegationContext.context : {},
-      delegationContext.info,
-      delegationContext.fieldName,
-      delegationContext.subschema,
-      delegationContext.returnType,
-      delegationContext.skipTypeMerging,
-      delegationContext.onLocatedError,
-      delegationContext.receiver
+    const {
+      context,
+      info,
+      fieldName,
+      subschema,
+      receiver,
+      returnType,
+      skipTypeMerging,
+      onLocatedError,
+    } = delegationContext;
+
+    const responseKey = fieldName != null ? fieldName : getResponseKeyFromInfo(info);
+
+    const { data, unpathedErrors } = mergeDataAndErrors(
+      originalResult.data == null ? undefined : originalResult.data[responseKey],
+      originalResult.errors == null ? [] : originalResult.errors,
+      info ? responsePathAsArray(info.path) : undefined,
+      onLocatedError
     );
+
+    return resolveExternalValue(data, unpathedErrors, subschema, context, info, receiver, returnType, skipTypeMerging);
   }
-}
-
-export function checkResultAndHandleErrors(
-  result: ExecutionResult,
-  context: Record<string, any>,
-  info: GraphQLResolveInfo,
-  responseKey: string = getResponseKeyFromInfo(info),
-  subschema?: GraphQLSchema | SubschemaConfig,
-  returnType: GraphQLOutputType = info.returnType,
-  skipTypeMerging?: boolean,
-  onLocatedError?: (originalError: GraphQLError) => GraphQLError,
-  receiver?: Receiver
-): any {
-  const { data, unpathedErrors } = mergeDataAndErrors(
-    result.data == null ? undefined : result.data[responseKey],
-    result.errors == null ? [] : result.errors,
-    info ? responsePathAsArray(info.path) : undefined,
-    onLocatedError
-  );
-
-  const externalValue = resolveExternalValue(
-    data,
-    unpathedErrors,
-    subschema,
-    context,
-    info,
-    returnType,
-    skipTypeMerging
-  );
-
-  if (externalValue && receiver != null) {
-    setReceiver(externalValue, receiver);
-  }
-
-  return externalValue;
 }
 
 export function mergeDataAndErrors(

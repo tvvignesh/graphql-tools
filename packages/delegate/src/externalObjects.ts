@@ -18,12 +18,14 @@ export function isExternalObject(data: any): data is ExternalObject {
 export function annotateExternalObject(
   object: any,
   errors: Array<GraphQLError>,
-  subschema: GraphQLSchema | SubschemaConfig
+  subschema: GraphQLSchema | SubschemaConfig,
+  receiver: Receiver
 ): ExternalObject {
   Object.defineProperties(object, {
     [OBJECT_SUBSCHEMA_SYMBOL]: { value: subschema },
     [FIELD_SUBSCHEMA_MAP_SYMBOL]: { value: Object.create(null) },
     [UNPATHED_ERRORS_SYMBOL]: { value: errors },
+    [RECEIVER_SYMBOL]: { value: receiver },
   });
   return object;
 }
@@ -38,10 +40,6 @@ export function getUnpathedErrors(object: ExternalObject): Array<GraphQLError> {
 
 export function getReceiver(object: ExternalObject): Receiver {
   return object[RECEIVER_SYMBOL];
-}
-
-export function setReceiver(object: ExternalObject, receiver: Receiver): void {
-  object[RECEIVER_SYMBOL] = receiver;
 }
 
 export function mergeExternalObjects(
