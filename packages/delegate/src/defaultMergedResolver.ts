@@ -3,10 +3,8 @@ import { defaultFieldResolver, GraphQLResolveInfo, responsePathAsArray } from 'g
 import { getResponseKeyFromInfo } from '@graphql-tools/utils';
 
 import { resolveExternalValue } from './resolveExternalValue';
-import { getSubschema, getUnpathedErrors, isExternalObject } from './externalObjects';
+import { getReceiver, getSubschema, getUnpathedErrors, isExternalObject } from './externalObjects';
 import { ExternalObject } from './types';
-import { isIncrementalResult } from './incrementalResult';
-import { PATH_PREFIX_SYMBOL, RECEIVER_SYMBOL } from './symbols';
 
 /**
  * Resolver that knows how to:
@@ -36,11 +34,13 @@ export function defaultMergedResolver(
   const unpathedErrors = getUnpathedErrors(parent);
   const subschema = getSubschema(parent, responseKey);
 
-  if (data === undefined && isIncrementalResult(parent)) {
-    const path = responsePathAsArray(info.path).slice(parent[PATH_PREFIX_SYMBOL]);
-    return parent[RECEIVER_SYMBOL].request(path).then(incrementalData =>
-      resolveExternalValue(incrementalData, unpathedErrors, subschema, context, info)
-    );
+  if (data === undefined) {
+    const receiver = getReceiver(parent);
+    if (receiver) {
+      return receiver
+        .request(responsePathAsArray(info.path))
+        .then(incrementalData => resolveExternalValue(incrementalData, unpathedErrors, subschema, context, info));
+    }
   }
 
   return resolveExternalValue(data, unpathedErrors, subschema, context, info);

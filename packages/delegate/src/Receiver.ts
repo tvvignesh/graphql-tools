@@ -26,15 +26,18 @@ function getDataAtPath(object: any, path: ReadonlyArray<string | number>): any {
 export class Receiver {
   private readonly asyncIterable: AsyncIterable<AsyncExecutionResult>;
   private readonly resultTransformer: (originalResult: ExecutionResult) => any;
+  private readonly initialResultDepth: number;
   private readonly pubsub: PubSub;
   private result: any;
 
   constructor(
     asyncIterable: AsyncIterable<AsyncExecutionResult>,
-    resultTransformer: (originalResult: ExecutionResult) => any
+    resultTransformer: (originalResult: ExecutionResult) => any,
+    initialResultDepth: number
   ) {
     this.asyncIterable = asyncIterable;
     this.resultTransformer = resultTransformer;
+    this.initialResultDepth = initialResultDepth;
     this.pubsub = new PubSub();
   }
 
@@ -58,7 +61,7 @@ export class Receiver {
   }
 
   public async request(requestedPath: Array<string | number>) {
-    const data = getDataAtPath(this.result, requestedPath);
+    const data = getDataAtPath(this.result, requestedPath.slice(this.initialResultDepth));
     if (data !== undefined) {
       return data;
     }

@@ -3,7 +3,13 @@ import { GraphQLSchema, GraphQLError, GraphQLObjectType, SelectionSetNode } from
 import { mergeDeep, relocatedError, GraphQLExecutionContext, collectFields } from '@graphql-tools/utils';
 
 import { SubschemaConfig, ExternalObject } from './types';
-import { OBJECT_SUBSCHEMA_SYMBOL, FIELD_SUBSCHEMA_MAP_SYMBOL, UNPATHED_ERRORS_SYMBOL } from './symbols';
+import {
+  OBJECT_SUBSCHEMA_SYMBOL,
+  FIELD_SUBSCHEMA_MAP_SYMBOL,
+  UNPATHED_ERRORS_SYMBOL,
+  RECEIVER_SYMBOL,
+} from './symbols';
+import { Receiver } from './Receiver';
 
 export function isExternalObject(data: any): data is ExternalObject {
   return data[UNPATHED_ERRORS_SYMBOL] !== undefined;
@@ -28,6 +34,14 @@ export function getSubschema(object: ExternalObject, responseKey: string): Graph
 
 export function getUnpathedErrors(object: ExternalObject): Array<GraphQLError> {
   return object[UNPATHED_ERRORS_SYMBOL];
+}
+
+export function getReceiver(object: ExternalObject): Receiver {
+  return object[RECEIVER_SYMBOL];
+}
+
+export function setReceiver(object: ExternalObject, receiver: Receiver): void {
+  object[RECEIVER_SYMBOL] = receiver;
 }
 
 export function mergeExternalObjects(

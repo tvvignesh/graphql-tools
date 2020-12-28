@@ -13,6 +13,8 @@ import { getResponseKeyFromInfo, ExecutionResult, relocatedError } from '@graphq
 
 import { SubschemaConfig, Transform, DelegationContext } from '../types';
 import { resolveExternalValue } from '../resolveExternalValue';
+import { Receiver } from '../Receiver';
+import { setReceiver } from '../externalObjects';
 
 export default class CheckResultAndHandleErrors implements Transform {
   public transformResult(
@@ -28,7 +30,8 @@ export default class CheckResultAndHandleErrors implements Transform {
       delegationContext.subschema,
       delegationContext.returnType,
       delegationContext.skipTypeMerging,
-      delegationContext.onLocatedError
+      delegationContext.onLocatedError,
+      delegationContext.receiver
     );
   }
 }
@@ -41,7 +44,8 @@ export function checkResultAndHandleErrors(
   subschema?: GraphQLSchema | SubschemaConfig,
   returnType: GraphQLOutputType = info.returnType,
   skipTypeMerging?: boolean,
-  onLocatedError?: (originalError: GraphQLError) => GraphQLError
+  onLocatedError?: (originalError: GraphQLError) => GraphQLError,
+  receiver?: Receiver
 ): any {
   const { data, unpathedErrors } = mergeDataAndErrors(
     result.data == null ? undefined : result.data[responseKey],
@@ -50,7 +54,21 @@ export function checkResultAndHandleErrors(
     onLocatedError
   );
 
-  return resolveExternalValue(data, unpathedErrors, subschema, context, info, returnType, skipTypeMerging);
+  const externalValue = resolveExternalValue(
+    data,
+    unpathedErrors,
+    subschema,
+    context,
+    info,
+    returnType,
+    skipTypeMerging
+  );
+
+  if (externalValue && receiver != null) {
+    setReceiver(externalValue, receiver);
+  }
+
+  return externalValue;
 }
 
 export function mergeDataAndErrors(

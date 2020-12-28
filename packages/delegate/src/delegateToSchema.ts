@@ -30,6 +30,7 @@ import {
   StitchingInfo,
   Transform,
   Executor,
+  DelegationContext,
 } from './types';
 
 import { isSubschemaConfig } from './subschemaConfig';
@@ -37,7 +38,7 @@ import { Subschema } from './Subschema';
 import { createRequestFromInfo, getDelegatingOperation } from './createRequest';
 import { Transformer } from './Transformer';
 import { memoize2 } from './memoize';
-import { asyncIterableToIncrementalResult } from './incrementalResult';
+import { Receiver } from './Receiver';
 
 export function delegateToSchema(options: IDelegateToSchemaOptions): any {
   const {
@@ -127,7 +128,7 @@ export function delegateRequest({
     transforms
   );
 
-  const delegationContext = {
+  const delegationContext: DelegationContext = {
     subschema: subschemaOrSubschemaConfig,
     targetSchema,
     operation: targetOperation,
@@ -176,18 +177,14 @@ export function delegateRequest({
 
     if (isPromise(executionResult)) {
       return executionResult.then(resolvedResult =>
-        handleExecutionResult(
-          resolvedResult,
-          originalResult => transformer.transformResult(originalResult),
-          info ? responsePathAsArray(info.path).length - 1 : 0
+        handleExecutionResult(resolvedResult, delegationContext, originalResult =>
+          transformer.transformResult(originalResult)
         )
       );
     }
 
-    return handleExecutionResult(
-      executionResult,
-      originalResult => transformer.transformResult(originalResult),
-      info ? responsePathAsArray(info.path).length - 1 : 0
+    return handleExecutionResult(executionResult, delegationContext, originalResult =>
+      transformer.transformResult(originalResult)
     );
   }
 
@@ -207,11 +204,18 @@ export function delegateRequest({
 
 function handleExecutionResult(
   executionResult: ExecutionResult | AsyncIterableIterator<AsyncExecutionResult>,
-  resultTransformer: (originalResult: ExecutionResult) => any,
-  pathPrefix: number
+  delegationContext: DelegationContext,
+  resultTransformer: (originalResult: ExecutionResult) => any
 ): any {
   if (isAsyncIterable(executionResult)) {
-    return asyncIterableToIncrementalResult(executionResult, resultTransformer, pathPrefix);
+    const { info } = delegationContext;
+
+    const initialResultDepth = info ? responsePathAsArray(info.path).length - 1 : 0;
+    const receiver = new Receiver(executionResult, resultTransformer, initialResultDepth);
+
+    delegationContext.receiver = receiver;
+
+    return receiver.getInitialResult();
   }
 
   return resultTransformer(executionResult);
