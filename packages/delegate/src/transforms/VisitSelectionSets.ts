@@ -13,7 +13,7 @@ import {
   DefinitionNode,
 } from 'graphql';
 
-import { Request, collectFields, GraphQLExecutionContext } from '@graphql-tools/utils';
+import { Request } from '@graphql-tools/utils';
 
 import { Transform, DelegationContext } from '../types';
 
@@ -48,7 +48,7 @@ function visitSelectionSets(
   initialType: GraphQLOutputType,
   visitor: (node: SelectionSetNode, typeInfo: TypeInfo) => SelectionSetNode
 ): DocumentNode {
-  const { document, variables } = request;
+  const { document } = request;
 
   const operations: Array<OperationDefinitionNode> = [];
   const fragments: Record<string, FragmentDefinitionNode> = Object.create(null);
@@ -60,37 +60,25 @@ function visitSelectionSets(
     }
   });
 
-  const partialExecutionContext = {
-    schema,
-    variableValues: variables,
-    fragments,
-  } as GraphQLExecutionContext;
-
   const typeInfo = new TypeInfo(schema, undefined, initialType);
   const newDefinitions: Array<DefinitionNode> = operations.map(operation => {
-    const type =
-      operation.operation === 'query'
-        ? schema.getQueryType()
-        : operation.operation === 'mutation'
-        ? schema.getMutationType()
-        : schema.getSubscriptionType();
-
-    const fields = collectFields(
-      partialExecutionContext,
-      type,
-      operation.selectionSet,
-      Object.create(null),
-      Object.create(null)
-    );
-
     const newSelections: Array<SelectionNode> = [];
-    Object.keys(fields).forEach(responseKey => {
-      const fieldNodes = fields[responseKey];
-      fieldNodes.forEach(fieldNode => {
-        const selectionSet = fieldNode.selectionSet;
+
+    operation.selectionSet.selections.forEach(selection => {
+      if (selection.kind === Kind.INLINE_FRAGMENT) {
+        newSelections.push(
+          visit(
+            selection,
+            visitWithTypeInfo(typeInfo, {
+              [Kind.SELECTION_SET]: node => visitor(node, typeInfo),
+            })
+          )
+        );
+      } else if (selection.kind === Kind.FIELD) {
+        const selectionSet = selection.selectionSet;
 
         if (selectionSet == null) {
-          newSelections.push(fieldNode);
+          newSelections.push(selection);
           return;
         }
 
@@ -102,15 +90,15 @@ function visitSelectionSets(
         );
 
         if (newSelectionSet === selectionSet) {
-          newSelections.push(fieldNode);
+          newSelections.push(selection);
           return;
         }
 
         newSelections.push({
-          ...fieldNode,
+          ...selection,
           selectionSet: newSelectionSet,
         });
-      });
+      }
     });
 
     return {
