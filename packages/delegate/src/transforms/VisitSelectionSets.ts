@@ -7,10 +7,10 @@ import {
   visit,
   visitWithTypeInfo,
   GraphQLOutputType,
-  OperationDefinitionNode,
   FragmentDefinitionNode,
   SelectionNode,
   DefinitionNode,
+  InlineFragmentNode,
 } from 'graphql';
 
 import { Request } from '@graphql-tools/utils';
@@ -50,31 +50,25 @@ function visitSelectionSets(
 ): DocumentNode {
   const { document } = request;
 
-  const operations: Array<OperationDefinitionNode> = [];
-  const fragments: Record<string, FragmentDefinitionNode> = Object.create(null);
-  document.definitions.forEach(def => {
-    if (def.kind === Kind.OPERATION_DEFINITION) {
-      operations.push(def);
-    } else if (def.kind === Kind.FRAGMENT_DEFINITION) {
-      fragments[def.name.value] = def;
-    }
-  });
-
   const typeInfo = new TypeInfo(schema, undefined, initialType);
-  const newDefinitions: Array<DefinitionNode> = operations.map(operation => {
-    const newSelections: Array<SelectionNode> = [];
 
-    operation.selectionSet.selections.forEach(selection => {
-      if (selection.kind === Kind.INLINE_FRAGMENT) {
-        newSelections.push(
-          visit(
-            selection,
-            visitWithTypeInfo(typeInfo, {
-              [Kind.SELECTION_SET]: node => visitor(node, typeInfo),
-            })
-          )
-        );
-      } else if (selection.kind === Kind.FIELD) {
+  const newDefinitions: Array<DefinitionNode> = [];
+  document.definitions.forEach(def => {
+    if (def.kind === Kind.FRAGMENT_DEFINITION) {
+      newDefinitions.push(visitNode(def, typeInfo, visitor));
+    } else if (def.kind === Kind.OPERATION_DEFINITION) {
+      const newSelections: Array<SelectionNode> = [];
+
+      def.selectionSet.selections.forEach(selection => {
+        if (selection.kind === Kind.FRAGMENT_SPREAD) {
+          return;
+        }
+
+        if (selection.kind === Kind.INLINE_FRAGMENT) {
+          newSelections.push(visitNode(selection, typeInfo, visitor));
+          return;
+        }
+
         const selectionSet = selection.selectionSet;
 
         if (selectionSet == null) {
@@ -82,12 +76,7 @@ function visitSelectionSets(
           return;
         }
 
-        const newSelectionSet = visit(
-          selectionSet,
-          visitWithTypeInfo(typeInfo, {
-            [Kind.SELECTION_SET]: node => visitor(node, typeInfo),
-          })
-        );
+        const newSelectionSet = visitNode(selectionSet, typeInfo, visitor);
 
         if (newSelectionSet === selectionSet) {
           newSelections.push(selection);
@@ -98,31 +87,33 @@ function visitSelectionSets(
           ...selection,
           selectionSet: newSelectionSet,
         });
-      }
-    });
+      });
 
-    return {
-      ...operation,
-      selectionSet: {
-        kind: Kind.SELECTION_SET,
-        selections: newSelections,
-      },
-    };
-  });
-
-  Object.values(fragments).forEach(fragment => {
-    newDefinitions.push(
-      visit(
-        fragment,
-        visitWithTypeInfo(typeInfo, {
-          [Kind.SELECTION_SET]: node => visitor(node, typeInfo),
-        })
-      )
-    );
+      newDefinitions.push({
+        ...def,
+        selectionSet: {
+          kind: Kind.SELECTION_SET,
+          selections: newSelections,
+        },
+      });
+    }
   });
 
   return {
     ...document,
     definitions: newDefinitions,
   };
+}
+
+function visitNode<T extends SelectionSetNode | FragmentDefinitionNode | InlineFragmentNode>(
+  node: T,
+  typeInfo: TypeInfo,
+  visitor: (node: SelectionSetNode, typeInfo: TypeInfo) => SelectionSetNode
+): T {
+  return visit(
+    node,
+    visitWithTypeInfo(typeInfo, {
+      [Kind.SELECTION_SET]: node => visitor(node, typeInfo),
+    })
+  );
 }
