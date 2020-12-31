@@ -102,13 +102,13 @@ function resolveExternalObject(
     return object;
   }
 
-  const fieldNodes = getFieldsNotInSubschema(info, subschema, mergedTypeInfo);
+  const fieldsAndPatches = getFieldsNotInSubschema(info, subschema, mergedTypeInfo);
 
   return mergeFields(
     mergedTypeInfo,
     typeName,
     object,
-    fieldNodes,
+    fieldsAndPatches,
     subschema as Subschema,
     targetSubschemas,
     context,

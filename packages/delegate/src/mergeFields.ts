@@ -1,12 +1,12 @@
 import {
   FieldNode,
-  SelectionNode,
   Kind,
   GraphQLResolveInfo,
   SelectionSetNode,
   GraphQLObjectType,
   responsePathAsArray,
   getNamedType,
+  InlineFragmentNode,
 } from 'graphql';
 
 import isPromise from 'is-promise';
@@ -20,7 +20,10 @@ const sortSubschemasByProxiability = memoize4(function (
   mergedTypeInfo: MergedTypeInfo,
   sourceSubschemaOrSourceSubschemas: Subschema | Array<Subschema>,
   targetSubschemas: Array<Subschema>,
-  fieldNodes: Array<FieldNode>
+  fieldsAndPatches: {
+    fields: Array<FieldNode>;
+    patches: Array<Array<FieldNode>>;
+  }
 ): {
   proxiableSubschemas: Array<Subschema>;
   nonProxiableSubschemas: Array<Subschema>;
@@ -41,14 +44,12 @@ const sortSubschemasByProxiability = memoize4(function (
     } else {
       if (
         fieldSelectionSets == null ||
-        fieldNodes.every(fieldNode => {
-          const fieldName = fieldNode.name.value;
-          const fieldSelectionSet = fieldSelectionSets[fieldName];
-          return (
-            fieldSelectionSet == null ||
-            subschemaTypesContainSelectionSet(mergedTypeInfo, sourceSubschemaOrSourceSubschemas, fieldSelectionSet)
-          );
-        })
+        hasAllFieldSelectionSets(
+          mergedTypeInfo,
+          sourceSubschemaOrSourceSubschemas,
+          fieldsAndPatches,
+          fieldSelectionSets
+        )
       ) {
         proxiableSubschemas.push(t);
       } else {
@@ -63,21 +64,169 @@ const sortSubschemasByProxiability = memoize4(function (
   };
 });
 
+function hasAllFieldSelectionSetsForFieldNodes(
+  mergedTypeInfo: MergedTypeInfo,
+  sourceSubschemaOrSourceSubschemas: Subschema | Array<Subschema>,
+  fieldNodes: Array<FieldNode>,
+  fieldSelectionSets: Record<string, SelectionSetNode>
+): boolean {
+  return fieldNodes.every(fieldNode => {
+    const fieldName = fieldNode.name.value;
+    const fieldSelectionSet = fieldSelectionSets[fieldName];
+    return (
+      fieldSelectionSet == null ||
+      subschemaTypesContainSelectionSet(mergedTypeInfo, sourceSubschemaOrSourceSubschemas, fieldSelectionSet)
+    );
+  });
+}
+
+function hasAllFieldSelectionSets(
+  mergedTypeInfo: MergedTypeInfo,
+  sourceSubschemaOrSourceSubschemas: Subschema | Array<Subschema>,
+  fieldsAndPatches: {
+    fields: Array<FieldNode>;
+    patches: Array<Array<FieldNode>>;
+  },
+  fieldSelectionSets: Record<string, SelectionSetNode>
+): boolean {
+  const { fields, patches } = fieldsAndPatches;
+
+  if (
+    !hasAllFieldSelectionSetsForFieldNodes(
+      mergedTypeInfo,
+      sourceSubschemaOrSourceSubschemas,
+      fields,
+      fieldSelectionSets
+    )
+  ) {
+    return false;
+  }
+
+  for (const patch of patches) {
+    if (
+      !hasAllFieldSelectionSetsForFieldNodes(
+        mergedTypeInfo,
+        sourceSubschemaOrSourceSubschemas,
+        patch,
+        fieldSelectionSets
+      )
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 const buildDelegationPlan = memoize3(function (
   mergedTypeInfo: MergedTypeInfo,
-  fieldNodes: Array<FieldNode>,
+  fieldsAndPatches: {
+    fields: Array<FieldNode>;
+    patches: Array<Array<FieldNode>>;
+  },
   proxiableSubschemas: Array<Subschema>
 ): {
   delegationMap: Map<Subschema, SelectionSetNode>;
-  unproxiableFieldNodes: Array<FieldNode>;
+  unproxiableFieldsAndPatches: {
+    fields: Array<FieldNode>;
+    patches: Array<Array<FieldNode>>;
+  };
 } {
+  const { fields, patches } = fieldsAndPatches;
   const { uniqueFields, nonUniqueFields } = mergedTypeInfo;
-  const unproxiableFieldNodes: Array<FieldNode> = [];
 
-  // 2. for each selection:
+  // 2. for each of fields and patches:
 
-  const delegationMap: Map<Subschema, Array<SelectionNode>> = new Map();
-  fieldNodes.forEach(fieldNode => {
+  const { delegationMap, unproxiableFields } = buildDelegationMap(
+    fields,
+    proxiableSubschemas,
+    uniqueFields,
+    nonUniqueFields
+  );
+
+  const planChunks: Array<{
+    delegationMap: Map<Subschema, Array<FieldNode>>;
+    unproxiableFields: Array<FieldNode>;
+  }> = [];
+
+  patches.forEach(patchFields => {
+    planChunks.push(buildDelegationMap(patchFields, proxiableSubschemas, uniqueFields, nonUniqueFields));
+  });
+
+  const finalDelegationMap: Map<Subschema, SelectionSetNode> = new Map();
+
+  delegationMap.forEach((fields, subschema) => {
+    finalDelegationMap.set(subschema, {
+      kind: Kind.SELECTION_SET,
+      selections: fields,
+    });
+  });
+
+  const unproxiablePatchFields: Array<Array<FieldNode>> = [];
+
+  planChunks.forEach(planChunk => {
+    const { delegationMap: patchDelegationMap, unproxiableFields: patchUnproxiableFields } = planChunk;
+
+    patchDelegationMap.forEach((patchFields, subschema) => {
+      const existingSelectionSet = finalDelegationMap.get(subschema);
+      {
+        const patchFragment: InlineFragmentNode = {
+          kind: Kind.INLINE_FRAGMENT,
+          typeCondition: {
+            kind: Kind.NAMED_TYPE,
+            name: {
+              kind: Kind.NAME,
+              value: mergedTypeInfo.typeName,
+            },
+          },
+          selectionSet: {
+            kind: Kind.SELECTION_SET,
+            selections: patchFields,
+          },
+          directives: [
+            {
+              kind: Kind.DIRECTIVE,
+              name: {
+                kind: Kind.NAME,
+                value: 'defer',
+              },
+            },
+          ],
+        };
+
+        if (existingSelectionSet == null) {
+          finalDelegationMap.set(subschema, {
+            kind: Kind.SELECTION_SET,
+            selections: [patchFragment],
+          });
+        } else {
+          existingSelectionSet.selections = existingSelectionSet.selections.concat(patchFragment);
+        }
+
+        unproxiablePatchFields.push(patchUnproxiableFields);
+      }
+    });
+  });
+
+  return {
+    delegationMap: finalDelegationMap,
+    unproxiableFieldsAndPatches: {
+      fields: unproxiableFields,
+      patches: unproxiablePatchFields,
+    },
+  };
+});
+
+function buildDelegationMap(
+  fields: Array<FieldNode>,
+  proxiableSubschemas: Array<Subschema>,
+  uniqueFields: Record<string, Subschema>,
+  nonUniqueFields: Record<string, Array<Subschema>>
+): { delegationMap: Map<Subschema, Array<FieldNode>>; unproxiableFields: Array<FieldNode> } {
+  const delegationMap: Map<Subschema, Array<FieldNode>> = new Map();
+  const unproxiableFields: Array<FieldNode> = [];
+
+  fields.forEach(fieldNode => {
     if (fieldNode.name.value === '__typename') {
       return;
     }
@@ -87,7 +236,7 @@ const buildDelegationPlan = memoize3(function (
     const uniqueSubschema: Subschema = uniqueFields[fieldNode.name.value];
     if (uniqueSubschema != null) {
       if (!proxiableSubschemas.includes(uniqueSubschema)) {
-        unproxiableFieldNodes.push(fieldNode);
+        unproxiableFields.push(fieldNode);
         return;
       }
 
@@ -106,13 +255,13 @@ const buildDelegationPlan = memoize3(function (
 
     let nonUniqueSubschemas: Array<Subschema> = nonUniqueFields[fieldNode.name.value];
     if (nonUniqueSubschemas == null) {
-      unproxiableFieldNodes.push(fieldNode);
+      unproxiableFields.push(fieldNode);
       return;
     }
 
     nonUniqueSubschemas = nonUniqueSubschemas.filter(s => proxiableSubschemas.includes(s));
     if (!nonUniqueSubschemas.length) {
-      unproxiableFieldNodes.push(fieldNode);
+      unproxiableFields.push(fieldNode);
       return;
     }
 
@@ -124,20 +273,11 @@ const buildDelegationPlan = memoize3(function (
     }
   });
 
-  const finalDelegationMap: Map<Subschema, SelectionSetNode> = new Map();
-
-  delegationMap.forEach((selections, subschema) => {
-    finalDelegationMap.set(subschema, {
-      kind: Kind.SELECTION_SET,
-      selections,
-    });
-  });
-
   return {
-    delegationMap: finalDelegationMap,
-    unproxiableFieldNodes,
+    delegationMap,
+    unproxiableFields,
   };
-});
+}
 
 const combineSubschemas = memoize2(function (
   subschemaOrSubschemas: Subschema | Array<Subschema>,
@@ -152,13 +292,18 @@ export function mergeFields(
   mergedTypeInfo: MergedTypeInfo,
   typeName: string,
   object: any,
-  fieldNodes: Array<FieldNode>,
+  fieldsAndPatches: {
+    fields: Array<FieldNode>;
+    patches: Array<Array<FieldNode>>;
+  },
   sourceSubschemaOrSourceSubschemas: Subschema | Array<Subschema>,
   targetSubschemas: Array<Subschema>,
   context: Record<string, any>,
   info: GraphQLResolveInfo
 ): any {
-  if (!fieldNodes.length) {
+  const { fields, patches } = fieldsAndPatches;
+
+  if (!fields.length && patches.every(patch => !patch.length)) {
     return object;
   }
 
@@ -166,10 +311,14 @@ export function mergeFields(
     mergedTypeInfo,
     sourceSubschemaOrSourceSubschemas,
     targetSubschemas,
-    fieldNodes
+    fieldsAndPatches
   );
 
-  const { delegationMap, unproxiableFieldNodes } = buildDelegationPlan(mergedTypeInfo, fieldNodes, proxiableSubschemas);
+  const { delegationMap, unproxiableFieldsAndPatches } = buildDelegationPlan(
+    mergedTypeInfo,
+    fieldsAndPatches,
+    proxiableSubschemas
+  );
 
   if (!delegationMap.size) {
     return object;
@@ -200,7 +349,7 @@ export function mergeFields(
             results,
             Array.from(resultMap.values())
           ),
-          unproxiableFieldNodes,
+          unproxiableFieldsAndPatches,
           combineSubschemas(sourceSubschemaOrSourceSubschemas, proxiableSubschemas),
           nonProxiableSubschemas,
           context,
@@ -218,7 +367,7 @@ export function mergeFields(
           Array.from(resultMap.keys()),
           Array.from(resultMap.values())
         ),
-        unproxiableFieldNodes,
+        unproxiableFieldsAndPatches,
         combineSubschemas(sourceSubschemaOrSourceSubschemas, proxiableSubschemas),
         nonProxiableSubschemas,
         context,

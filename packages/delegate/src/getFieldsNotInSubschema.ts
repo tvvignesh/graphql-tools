@@ -6,7 +6,13 @@ import { isSubschemaConfig } from './subschemaConfig';
 import { MergedTypeInfo, SubschemaConfig, StitchingInfo } from './types';
 import { memoizeInfoAnd2Objects } from './memoize';
 
-function collectSubFields(info: GraphQLResolveInfo, typeName: string): Record<string, Array<FieldNode>> {
+function collectSubFields(
+  info: GraphQLResolveInfo,
+  typeName: string
+): {
+  fieldNodes: Record<string, Array<FieldNode>>;
+  patches: Array<{ fields: Record<string, Array<FieldNode>> }>;
+} {
   const subFieldNodes: Record<string, Array<FieldNode>> = Object.create(null);
   const patches: Array<{ label?: string; fields: Record<string, Array<FieldNode>> }> = [];
   const visitedFragmentNames = Object.create(null);
@@ -40,19 +46,19 @@ function collectSubFields(info: GraphQLResolveInfo, typeName: string): Record<st
     }
   });
 
-  return subFieldNodes;
+  return { fieldNodes: subFieldNodes, patches };
 }
 
 export const getFieldsNotInSubschema = memoizeInfoAnd2Objects(function (
   info: GraphQLResolveInfo,
   subschema: GraphQLSchema | SubschemaConfig,
   mergedTypeInfo: MergedTypeInfo
-): Array<FieldNode> {
+): { fields: Array<FieldNode>; patches: Array<Array<FieldNode>> } {
   const typeMap = isSubschemaConfig(subschema) ? mergedTypeInfo.typeMaps.get(subschema) : subschema.getTypeMap();
   const typeName = mergedTypeInfo.typeName;
   const fields = (typeMap[typeName] as GraphQLObjectType).getFields();
 
-  const subFieldNodes = collectSubFields(info, typeName);
+  const { fieldNodes: subFieldNodes, patches } = collectSubFields(info, typeName);
 
   let fieldsNotInSchema: Array<FieldNode> = [];
   Object.keys(subFieldNodes).forEach(responseName => {
@@ -62,5 +68,17 @@ export const getFieldsNotInSubschema = memoizeInfoAnd2Objects(function (
     }
   });
 
-  return fieldsNotInSchema;
+  const newPatches: Array<Array<FieldNode>> = [];
+  patches.forEach(patch => {
+    let patchFieldsNotInSchema: Array<FieldNode> = [];
+    Object.keys(patchFieldsNotInSchema).forEach(responseName => {
+      const fieldName = patch[responseName][0].name.value;
+      if (!(fieldName in fields)) {
+        patchFieldsNotInSchema = patchFieldsNotInSchema.concat(subFieldNodes[responseName]);
+      }
+    });
+    newPatches.push(patchFieldsNotInSchema);
+  });
+
+  return { fields: fieldsNotInSchema, patches: newPatches };
 });
