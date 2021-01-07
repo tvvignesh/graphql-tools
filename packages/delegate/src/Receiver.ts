@@ -29,6 +29,7 @@ export class Receiver {
   private readonly initialResultDepth: number;
   private readonly pubsub: PubSub;
   private result: any;
+  private iterating: boolean;
 
   constructor(
     asyncIterable: AsyncIterable<AsyncExecutionResult>,
@@ -39,6 +40,7 @@ export class Receiver {
     this.resultTransformer = resultTransformer;
     this.initialResultDepth = initialResultDepth;
     this.pubsub = new PubSub();
+    this.iterating = false;
   }
 
   public async getInitialResult() {
@@ -46,7 +48,6 @@ export class Receiver {
     const payload = await asyncIterator.next();
     const transformedResult = this.resultTransformer(payload.value);
     this.result = transformedResult;
-    setTimeout(() => this.iterate(), 0);
     return transformedResult;
   }
 
@@ -55,9 +56,18 @@ export class Receiver {
       if (isPatchResultWithData(asyncResult)) {
         const transformedResult = this.resultTransformer(asyncResult);
         updateObjectWithPatch(this.result, asyncResult.path, transformedResult);
-        this.pubsub.publish(PATCH_TOPIC, asyncResult);
+        this._publish(asyncResult);
       }
     }
+  }
+
+  private _publish(patchResult: ExecutionPatchResult<Record<string, any>>): void {
+    this.pubsub.publish(PATCH_TOPIC, patchResult);
+  }
+
+  private _subscribe(): AsyncIterableIterator<ExecutionPatchResult<Record<string, any>>> {
+    const asyncIterator = this.pubsub.asyncIterator<ExecutionPatchResult>(PATCH_TOPIC);
+    return mapAsyncIterator(asyncIterator, value => value);
   }
 
   public async request(requestedPath: Array<string | number>) {
@@ -65,8 +75,13 @@ export class Receiver {
     if (data !== undefined) {
       return data;
     }
-    const asyncIterator = this.pubsub.asyncIterator<ExecutionPatchResult>(PATCH_TOPIC);
-    const asyncIterable = mapAsyncIterator(asyncIterator, value => value);
+
+    const asyncIterable = this._subscribe();
+
+    if (!this.iterating) {
+      setTimeout(() => this.iterate(), 0);
+    }
+
     for await (const patchResult of asyncIterable) {
       const receivedPath = patchResult.path;
       const receivedPathLength = receivedPath.length;
