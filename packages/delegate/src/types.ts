@@ -21,7 +21,7 @@ import {
   OBJECT_SUBSCHEMA_SYMBOL,
   FIELD_SUBSCHEMA_MAP_SYMBOL,
   UNPATHED_ERRORS_SYMBOL,
-  RECEIVER_SYMBOL,
+  RECEIVER_MAP_SYMBOL,
 } from './symbols';
 
 import { Subschema } from './Subschema';
@@ -223,5 +223,5 @@ export interface ExternalObject {
   [OBJECT_SUBSCHEMA_SYMBOL]: GraphQLSchema | SubschemaConfig;
   [FIELD_SUBSCHEMA_MAP_SYMBOL]: Record<string, GraphQLSchema | SubschemaConfig>;
   [UNPATHED_ERRORS_SYMBOL]: Array<GraphQLError>;
-  [RECEIVER_SYMBOL]?: Receiver;
+  [RECEIVER_MAP_SYMBOL]: Map<GraphQLSchema | SubschemaConfig, Receiver>;
 }

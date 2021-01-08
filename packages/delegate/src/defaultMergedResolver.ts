@@ -33,7 +33,7 @@ export function defaultMergedResolver(
   const data = parent[responseKey];
   const unpathedErrors = getUnpathedErrors(parent);
   const subschema = getSubschema(parent, responseKey);
-  const receiver = getReceiver(parent);
+  const receiver = getReceiver(parent, subschema);
 
   if (data === undefined && receiver !== undefined) {
     return receiver

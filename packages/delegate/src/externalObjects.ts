@@ -1,13 +1,13 @@
 import { GraphQLSchema, GraphQLError, GraphQLObjectType, SelectionSetNode } from 'graphql';
 
-import { mergeDeep, relocatedError, GraphQLExecutionContext, collectFields } from '@graphql-tools/utils';
+import { relocatedError, GraphQLExecutionContext, collectFields } from '@graphql-tools/utils';
 
 import { SubschemaConfig, ExternalObject } from './types';
 import {
   OBJECT_SUBSCHEMA_SYMBOL,
   FIELD_SUBSCHEMA_MAP_SYMBOL,
   UNPATHED_ERRORS_SYMBOL,
-  RECEIVER_SYMBOL,
+  RECEIVER_MAP_SYMBOL,
 } from './symbols';
 import { Receiver } from './Receiver';
 
@@ -21,11 +21,13 @@ export function annotateExternalObject(
   subschema: GraphQLSchema | SubschemaConfig,
   receiver: Receiver
 ): ExternalObject {
+  const receiverMap: Map<GraphQLSchema | SubschemaConfig, Receiver> = new Map();
+  receiverMap.set(subschema, receiver);
   Object.defineProperties(object, {
     [OBJECT_SUBSCHEMA_SYMBOL]: { value: subschema },
     [FIELD_SUBSCHEMA_MAP_SYMBOL]: { value: Object.create(null) },
     [UNPATHED_ERRORS_SYMBOL]: { value: errors },
-    [RECEIVER_SYMBOL]: { value: receiver },
+    [RECEIVER_MAP_SYMBOL]: { value: receiverMap },
   });
   return object;
 }
@@ -38,8 +40,8 @@ export function getUnpathedErrors(object: ExternalObject): Array<GraphQLError> {
   return object[UNPATHED_ERRORS_SYMBOL];
 }
 
-export function getReceiver(object: ExternalObject): Receiver {
-  return object[RECEIVER_SYMBOL];
+export function getReceiver(object: ExternalObject, subschema: GraphQLSchema | SubschemaConfig): Receiver {
+  return object[RECEIVER_MAP_SYMBOL].get(subschema);
 }
 
 export function mergeExternalObjects(
@@ -50,56 +52,61 @@ export function mergeExternalObjects(
   sources: Array<ExternalObject>,
   selectionSets: Array<SelectionSetNode>
 ): ExternalObject {
-  const results: Array<any> = [];
-  let errors: Array<GraphQLError> = [];
+  if (target[FIELD_SUBSCHEMA_MAP_SYMBOL] == null) {
+    target[FIELD_SUBSCHEMA_MAP_SYMBOL] = Object.create(null);
+  }
+
+  const newFieldSubschemaMap = target[FIELD_SUBSCHEMA_MAP_SYMBOL];
+  const newReceiverMap = target[RECEIVER_MAP_SYMBOL];
+  const newUnpathedErrors = target[UNPATHED_ERRORS_SYMBOL];
 
   sources.forEach((source, index) => {
+    const fieldNodes = collectFields(
+      {
+        schema,
+        variableValues: {},
+        fragments: {},
+      } as GraphQLExecutionContext,
+      schema.getType(typeName) as GraphQLObjectType,
+      selectionSets[index],
+      Object.create(null),
+      Object.create(null)
+    );
+
     if (source instanceof GraphQLError || source === null) {
-      const selectionSet = selectionSets[index];
-      const fieldNodes = collectFields(
-        {
-          schema,
-          variableValues: {},
-          fragments: {},
-        } as GraphQLExecutionContext,
-        schema.getType(typeName) as GraphQLObjectType,
-        selectionSet,
-        Object.create(null),
-        Object.create(null)
-      );
-      const nullResult = {};
       Object.keys(fieldNodes).forEach(responseKey => {
-        nullResult[responseKey] =
+        target[responseKey] =
           source instanceof GraphQLError ? relocatedError(source, path.concat([responseKey])) : null;
       });
-      results.push(nullResult);
-    } else {
-      errors = errors.concat(source[UNPATHED_ERRORS_SYMBOL]);
-      results.push(source);
+      return;
+    }
+
+    Object.keys(fieldNodes).forEach(responseKey => {
+      target[responseKey] = source[responseKey];
+    });
+
+    if (isExternalObject(source)) {
+      const receiverMap = source[RECEIVER_MAP_SYMBOL];
+      receiverMap.forEach((receiver, subschema) => {
+        newReceiverMap.set(subschema, receiver);
+      });
+
+      newUnpathedErrors.push(...source[UNPATHED_ERRORS_SYMBOL]);
+
+      const objectSubschema = source[OBJECT_SUBSCHEMA_SYMBOL];
+
+      const fieldSubschemaMap = source[FIELD_SUBSCHEMA_MAP_SYMBOL];
+      if (fieldSubschemaMap === undefined) {
+        Object.keys(source).forEach(responseKey => {
+          newFieldSubschemaMap[responseKey] = objectSubschema;
+        });
+      } else {
+        Object.keys(source).forEach(responseKey => {
+          newFieldSubschemaMap[responseKey] = fieldSubschemaMap[responseKey] ?? objectSubschema;
+        });
+      }
     }
   });
 
-  const combinedResult: ExternalObject = results.reduce(mergeDeep, target);
-
-  const newFieldSubschemaMap = target[FIELD_SUBSCHEMA_MAP_SYMBOL] ?? Object.create(null);
-
-  results.forEach((source: ExternalObject) => {
-    const objectSubschema = source[OBJECT_SUBSCHEMA_SYMBOL];
-    const fieldSubschemaMap = source[FIELD_SUBSCHEMA_MAP_SYMBOL];
-    if (fieldSubschemaMap === undefined) {
-      Object.keys(source).forEach(responseKey => {
-        newFieldSubschemaMap[responseKey] = objectSubschema;
-      });
-    } else {
-      Object.keys(source).forEach(responseKey => {
-        newFieldSubschemaMap[responseKey] = fieldSubschemaMap[responseKey] ?? objectSubschema;
-      });
-    }
-  });
-
-  combinedResult[FIELD_SUBSCHEMA_MAP_SYMBOL] = newFieldSubschemaMap;
-  combinedResult[OBJECT_SUBSCHEMA_SYMBOL] = target[OBJECT_SUBSCHEMA_SYMBOL];
-  combinedResult[UNPATHED_ERRORS_SYMBOL] = target[UNPATHED_ERRORS_SYMBOL].concat(errors);
-
-  return combinedResult;
+  return target;
 }

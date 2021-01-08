@@ -2,7 +2,7 @@ import { graphql } from 'graphql';
 
 import { makeExecutableSchema } from '@graphql-tools/schema';
 import { stitchSchemas } from '@graphql-tools/stitch';
-import { isAsyncIterable } from '@graphql-tools/utils';
+import { ExecutionResult, isAsyncIterable } from '@graphql-tools/utils';
 
 describe('defer support', () => {
   test('should work for root fields', async () => {
@@ -47,7 +47,7 @@ describe('defer support', () => {
     });
     expect(results[1]).toEqual({
       data: {
-        test: 'test'
+        test: 'test',
       },
       hasNext: false,
       path: [],
@@ -104,7 +104,108 @@ describe('defer support', () => {
     });
     expect(results[1]).toEqual({
       data: {
-        test: 'test'
+        test: 'test',
+      },
+      hasNext: false,
+      path: ['object'],
+    });
+  });
+
+  test('should work for merged fields', async () => {
+    const schema1 = makeExecutableSchema({
+      typeDefs: `
+        type Object {
+          id: ID
+          field1: String
+        }
+        type Query {
+          object(id: ID): Object
+        }
+      `,
+      resolvers: {
+        Object: {
+          field1: () => 'field1',
+        },
+        Query: {
+          object: () => ({ id: '1' }),
+        }
+      },
+    });
+
+    const schema2 = makeExecutableSchema({
+      typeDefs: `
+        type Object {
+          id: ID
+          field2: String
+        }
+        type Query {
+          object(id: ID): Object
+        }
+      `,
+      resolvers: {
+        Object: {
+          field2: () => 'field2',
+        },
+        Query: {
+          object: () => ({ id: '1' }),
+        }
+      },
+    });
+
+    const stitchedSchema = stitchSchemas({
+      subschemas: [{
+        schema: schema1,
+        merge: {
+          Object: {
+            selectionSet: '{ id }',
+            fieldName: 'object',
+            args: ({ id }) => ({ id }),
+          },
+        },
+      }, {
+        schema: schema2,
+        merge: {
+          Object: {
+            selectionSet: '{ id }',
+            fieldName: 'object',
+            args: ({ id }) => ({ id }),
+          },
+        },
+      }],
+    });
+
+    const result = await graphql(
+      stitchedSchema,
+      `
+        query {
+          object(id: "1") {
+            ... on Object @defer {
+              field1
+              field2
+            }
+          }
+        }
+      `,
+    );
+
+    expect((result as ExecutionResult).errors).toBeUndefined();
+
+    const results = [];
+
+    if (isAsyncIterable(result)) {
+      for await (const patch of result) {
+        results.push(patch);
+      }
+    }
+
+    expect(results[0]).toEqual({
+      data: { object: {} },
+      hasNext: true,
+    });
+    expect(results[1]).toEqual({
+      data: {
+        field1: 'field1',
+        field2: 'field2',
       },
       hasNext: false,
       path: ['object'],
