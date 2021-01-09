@@ -49,7 +49,7 @@ export function createStitchingInfo(
         if (selectionSetsByField[typeName][fieldName] == null) {
           selectionSetsByField[typeName][fieldName] = {
             kind: Kind.SELECTION_SET,
-            selections: [parseSelectionSet('{ __typename }', { noLocation: true }).selections[0]],
+            selections: [],
           };
         }
         selectionSetsByField[typeName][fieldName].selections = selectionSetsByField[typeName][
@@ -63,7 +63,7 @@ export function createStitchingInfo(
         if (selectionSetsByField[typeName][fieldName] == null) {
           selectionSetsByField[typeName][fieldName] = {
             kind: Kind.SELECTION_SET,
-            selections: [parseSelectionSet('{ __typename }', { noLocation: true }).selections[0]],
+            selections: [],
           };
         }
         selectionSetsByField[typeName][fieldName].selections = selectionSetsByField[typeName][
@@ -237,6 +237,9 @@ export function completeStitchingInfo(
     if (rootType) {
       selectionSetsByType[rootType.name] = parseSelectionSet('{ __typename }', { noLocation: true });
     }
+  });
+  Object.keys(stitchingInfo.mergedTypes).forEach(typeName => {
+    selectionSetsByType[typeName] = parseSelectionSet('{ __typename }', { noLocation: true });
   });
 
   const selectionSetsByField = stitchingInfo.selectionSetsByField;

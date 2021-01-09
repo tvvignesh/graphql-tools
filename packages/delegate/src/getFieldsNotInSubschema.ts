@@ -71,10 +71,11 @@ export const getFieldsNotInSubschema = memoizeInfoAnd2Objects(function (
   const newPatches: Array<Array<FieldNode>> = [];
   patches.forEach(patch => {
     let patchFieldsNotInSchema: Array<FieldNode> = [];
-    Object.keys(patchFieldsNotInSchema).forEach(responseName => {
-      const fieldName = patch[responseName][0].name.value;
+    const patchFields = patch.fields;
+    Object.keys(patchFields).forEach(responseName => {
+      const fieldName = patchFields[responseName][0].name.value;
       if (!(fieldName in fields)) {
-        patchFieldsNotInSchema = patchFieldsNotInSchema.concat(subFieldNodes[responseName]);
+        patchFieldsNotInSchema = patchFieldsNotInSchema.concat(patchFields[responseName]);
       }
     });
     newPatches.push(patchFieldsNotInSchema);

@@ -81,8 +81,10 @@ export function mergeExternalObjects(
       return;
     }
 
+    const objectSubschema = source[OBJECT_SUBSCHEMA_SYMBOL];
     Object.keys(fieldNodes).forEach(responseKey => {
       target[responseKey] = source[responseKey];
+      newFieldSubschemaMap[responseKey] = objectSubschema;
     });
 
     if (isExternalObject(source)) {
@@ -93,18 +95,10 @@ export function mergeExternalObjects(
 
       newUnpathedErrors.push(...source[UNPATHED_ERRORS_SYMBOL]);
 
-      const objectSubschema = source[OBJECT_SUBSCHEMA_SYMBOL];
-
       const fieldSubschemaMap = source[FIELD_SUBSCHEMA_MAP_SYMBOL];
-      if (fieldSubschemaMap === undefined) {
-        Object.keys(source).forEach(responseKey => {
-          newFieldSubschemaMap[responseKey] = objectSubschema;
-        });
-      } else {
-        Object.keys(source).forEach(responseKey => {
-          newFieldSubschemaMap[responseKey] = fieldSubschemaMap[responseKey] ?? objectSubschema;
-        });
-      }
+      Object.keys(fieldSubschemaMap).forEach(responseKey => {
+        newFieldSubschemaMap[responseKey] = fieldSubschemaMap[responseKey];
+      });
     }
   });
 
