@@ -73,6 +73,12 @@ export function createStitchingInfo(
     });
   });
 
+  Object.values(selectionSetsByField).forEach(selectionSets => {
+    Object.entries(selectionSets).forEach(([fieldName, selectionSet]) => {
+      selectionSets[fieldName] = addUndeferDirective(selectionSet);
+    });
+  });
+
   return {
     subschemaMap,
     selectionSetsByType: undefined,
@@ -131,6 +137,7 @@ function createMergedTypes(
 
           if (mergedTypeConfig.selectionSet) {
             const selectionSet = parseSelectionSet(mergedTypeConfig.selectionSet, { noLocation: true });
+
             selectionSets.set(subschema, selectionSet);
           }
 
@@ -235,7 +242,7 @@ export function completeStitchingInfo(
   const selectionSetsByType = Object.create(null);
   [schema.getQueryType(), schema.getMutationType()].forEach(rootType => {
     if (rootType) {
-      selectionSetsByType[rootType.name] = parseSelectionSet('{ __typename }', { noLocation: true });
+      selectionSetsByType[rootType.name] = parseSelectionSet('{ __typename @undefer }', { noLocation: true });
     }
   });
 
@@ -311,4 +318,20 @@ export function addStitchingInfo(stitchedSchema: GraphQLSchema, stitchingInfo: S
 
 export function selectionSetContainsTopLevelField(selectionSet: SelectionSetNode, fieldName: string) {
   return selectionSet.selections.some(selection => selection.kind === Kind.FIELD && selection.name.value === fieldName);
+}
+
+function addUndeferDirective(selectionSet: SelectionSetNode): SelectionSetNode {
+  return {
+    ...selectionSet,
+    selections: selectionSet.selections.map(selection => ({
+      ...selection,
+      directives: (selection.directives == null ? [] : selection.directives).concat({
+        kind: Kind.DIRECTIVE,
+        name: {
+          kind: Kind.NAME,
+          value: 'undefer',
+        },
+      }),
+    })),
+  };
 }

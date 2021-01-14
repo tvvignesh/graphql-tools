@@ -7,6 +7,7 @@ import FilterToSchema from './transforms/FilterToSchema';
 import AddTypenameToAbstract from './transforms/AddTypenameToAbstract';
 import CheckResultAndHandleErrors from './transforms/CheckResultAndHandleErrors';
 import AddArgumentsAsVariables from './transforms/AddArgumentsAsVariables';
+import UndeferSelections from './transforms/UndeferSelections';
 
 export function defaultDelegationBinding(delegationContext: DelegationContext): Array<Transform> {
   let delegationTransforms: Array<Transform> = [new CheckResultAndHandleErrors()];
@@ -40,7 +41,11 @@ export function defaultDelegationBinding(delegationContext: DelegationContext): 
     delegationTransforms.push(new AddArgumentsAsVariables(args));
   }
 
-  delegationTransforms = delegationTransforms.concat([new FilterToSchema(), new AddTypenameToAbstract()]);
+  delegationTransforms = delegationTransforms.concat([
+    new FilterToSchema(),
+    new AddTypenameToAbstract(),
+    new UndeferSelections(),
+  ]);
 
   return delegationTransforms;
 }
