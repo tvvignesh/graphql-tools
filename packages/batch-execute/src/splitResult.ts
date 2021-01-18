@@ -2,14 +2,52 @@
 
 import { ExecutionResult, GraphQLError } from 'graphql';
 
-import { relocatedError } from '@graphql-tools/utils';
+import isPromise from 'is-promise';
+
+import { AsyncExecutionResult, isAsyncIterable, relocatedError } from '@graphql-tools/utils';
 
 import { parseKey } from './prefix';
+
+export function splitResult(
+  mergedResult:
+    | ExecutionResult
+    | AsyncIterableIterator<AsyncExecutionResult>
+    | Promise<ExecutionResult | AsyncIterableIterator<AsyncExecutionResult>>,
+  numResults: number
+): Array<
+  | ExecutionResult
+  | AsyncIterableIterator<ExecutionResult>
+  | Promise<ExecutionResult | AsyncIterableIterator<ExecutionResult>>
+> {
+  if (isPromise(mergedResult)) {
+    const result = mergedResult.then(r => splitExecutionResultOrAsyncIterableIterator(r, numResults));
+    const splitResults: Array<Promise<ExecutionResult | AsyncIterableIterator<ExecutionResult>>> = [];
+    for (let i = 0; i < numResults; i++) {
+      splitResults.push(result.then(r => r[i]));
+    }
+
+    return splitResults;
+  }
+
+  return splitExecutionResultOrAsyncIterableIterator(mergedResult, numResults);
+}
+
+export function splitExecutionResultOrAsyncIterableIterator(
+  mergedResult: ExecutionResult | AsyncIterableIterator<ExecutionResult>,
+  numResults: number
+): Array<ExecutionResult | AsyncIterableIterator<ExecutionResult>> {
+  if (isAsyncIterable(mergedResult)) {
+    // TODO: add implementation
+    return undefined;
+  }
+
+  return splitExecutionResult(mergedResult, numResults);
+}
 
 /**
  * Split and transform result of the query produced by the `merge` function
  */
-export function splitResult(mergedResult: ExecutionResult, numResults: number): Array<ExecutionResult> {
+export function splitExecutionResult(mergedResult: ExecutionResult, numResults: number): Array<ExecutionResult> {
   const splitResults: Array<ExecutionResult> = [];
   for (let i = 0; i < numResults; i++) {
     splitResults.push({});
