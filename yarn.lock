@@ -2484,6 +2484,11 @@
   dependencies:
     mkdirp "^1.0.4"
 
+"@repeaterjs/repeater@^3.0.4":
+  version "3.0.4"
+  resolved "https://registry.yarnpkg.com/@repeaterjs/repeater/-/repeater-3.0.4.tgz#a04d63f4d1bf5540a41b01a921c9a7fddc3bd1ca"
+  integrity sha512-AW8PKd6iX3vAZ0vA43nOUOnbq/X5ihgU+mSXXqunMkeQADGiqw/PY0JNeYtD5sr0PAy51YPgAPbDoeapv9r8WA==
+
 "@rollup/plugin-node-resolve@7.1.1":
   version "7.1.1"
   resolved "https://registry.yarnpkg.com/@rollup/plugin-node-resolve/-/plugin-node-resolve-7.1.1.tgz#8c6e59c4b28baf9d223028d0e450e06a485bb2b7"
@@ -7479,7 +7484,7 @@ graphql-scalars@1.7.0:
   dependencies:
     tslib "~2.0.3"
 
-graphql-subscriptions@1.1.0, graphql-subscriptions@^1.1.0:
+graphql-subscriptions@1.1.0:
   version "1.1.0"
   resolved "https://registry.yarnpkg.com/graphql-subscriptions/-/graphql-subscriptions-1.1.0.tgz#5f2fa4233eda44cf7570526adfcf3c16937aef11"
   integrity sha512-6WzlBFC0lWmXJbIVE8OgFgXIP4RJi3OQgTPa0DVMsDXdpRDjTsM1K9wfl5HSYX7R87QAGlvcv2Y4BIZa/ItonA==

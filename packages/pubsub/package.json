@@ -1,11 +1,11 @@
 {
-  "name": "@graphql-tools/delegate",
-  "version": "7.0.9",
+  "name": "@graphql-tools/pubsub",
+  "version": "7.0.0",
   "description": "A set of utils for faster development of GraphQL tools",
   "repository": {
     "type": "git",
     "url": "ardatan/graphql-tools",
-    "directory": "packages/delegate"
+    "directory": "packages/batch-delegate"
   },
   "license": "MIT",
   "sideEffects": false,
@@ -22,14 +22,7 @@
     "input": "./src/index.ts"
   },
   "dependencies": {
-    "@ardatan/aggregate-error": "0.0.6",
-    "@graphql-tools/batch-execute": "^7.0.0",
-    "@graphql-tools/pubsub": "^7.0.0",
-    "@graphql-tools/schema": "^7.0.0",
-    "@graphql-tools/utils": "^7.1.6",
-    "dataloader": "2.0.0",
-    "is-promise": "4.0.0",
-    "tslib": "~2.1.0"
+    "@repeaterjs/repeater": "^3.0.4"
   },
   "publishConfig": {
     "access": "public",
