@@ -22,6 +22,7 @@
     "input": "./src/index.ts"
   },
   "dependencies": {
+    "@graphql-tools/pubsub": "^7.0.0",
     "@graphql-tools/utils": "^7.0.0",
     "dataloader": "2.0.0",
     "is-promise": "4.0.0",

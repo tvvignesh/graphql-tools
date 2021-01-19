@@ -5,6 +5,7 @@ import { ExecutionResult, GraphQLError } from 'graphql';
 import isPromise from 'is-promise';
 
 import { AsyncExecutionResult, isAsyncIterable, relocatedError } from '@graphql-tools/utils';
+import { InMemoryChannel } from '@graphql-tools/pubsub';
 
 import { parseKey } from './prefix';
 
@@ -16,8 +17,8 @@ export function splitResult(
   numResults: number
 ): Array<
   | ExecutionResult
-  | AsyncIterableIterator<ExecutionResult>
-  | Promise<ExecutionResult | AsyncIterableIterator<ExecutionResult>>
+  | AsyncIterableIterator<AsyncExecutionResult>
+  | Promise<ExecutionResult | AsyncIterableIterator<AsyncExecutionResult>>
 > {
   if (isPromise(mergedResult)) {
     const result = mergedResult.then(r => splitExecutionResultOrAsyncIterableIterator(r, numResults));
@@ -32,13 +33,31 @@ export function splitResult(
   return splitExecutionResultOrAsyncIterableIterator(mergedResult, numResults);
 }
 
+async function iterate(
+  mergedResult: AsyncIterableIterator<AsyncExecutionResult>,
+  channel: InMemoryChannel<AsyncExecutionResult>
+): Promise<void> {
+  for await (const asyncResult of mergedResult) {
+    channel.publish(asyncResult);
+  }
+}
+
 export function splitExecutionResultOrAsyncIterableIterator(
-  mergedResult: ExecutionResult | AsyncIterableIterator<ExecutionResult>,
+  mergedResult: ExecutionResult | AsyncIterableIterator<AsyncExecutionResult>,
   numResults: number
-): Array<ExecutionResult | AsyncIterableIterator<ExecutionResult>> {
+): Array<ExecutionResult | AsyncIterableIterator<AsyncExecutionResult>> {
   if (isAsyncIterable(mergedResult)) {
-    // TODO: add implementation
-    return undefined;
+    const channel = new InMemoryChannel();
+
+    const asyncIterables: Array<AsyncIterableIterator<AsyncExecutionResult>> = [];
+    for (let i = 0; i < numResults; i++) {
+      // TODO: add filter and map functionality
+      asyncIterables.push(channel.subscribe());
+    }
+
+    setImmediate(() => iterate(mergedResult, channel));
+
+    return asyncIterables;
   }
 
   return splitExecutionResult(mergedResult, numResults);
