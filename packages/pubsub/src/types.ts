@@ -12,3 +12,5 @@ export interface PubSub<T> {
   subscribe(topic: string, buffer?: RepeaterBuffer): AsyncIterableIterator<T>;
   close(reason?: any): Promise<unknown> | unknown;
 }
+
+export type Splitter<T> = (item: T) => [number, T];
