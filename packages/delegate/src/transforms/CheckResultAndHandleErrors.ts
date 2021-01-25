@@ -1,4 +1,4 @@
-import { GraphQLError, responsePathAsArray, locatedError } from 'graphql';
+import { GraphQLError, responsePathAsArray, locatedError, ExecutionPatchResult } from 'graphql';
 
 import AggregateError from '@ardatan/aggregate-error';
 
@@ -9,7 +9,7 @@ import { resolveExternalValue } from '../resolveExternalValue';
 
 export default class CheckResultAndHandleErrors implements Transform {
   public transformResult(
-    originalResult: ExecutionResult,
+    originalResult: ExecutionResult | ExecutionPatchResult,
     delegationContext: DelegationContext,
     _transformationContext: Record<string, any>
   ): ExecutionResult {
@@ -27,7 +27,11 @@ export default class CheckResultAndHandleErrors implements Transform {
     const responseKey = fieldName != null ? fieldName : getResponseKeyFromInfo(info);
 
     const { data, unpathedErrors } = mergeDataAndErrors(
-      originalResult.data == null ? undefined : originalResult.data[responseKey],
+      originalResult.data == null
+        ? undefined
+        : (originalResult as ExecutionPatchResult)?.path?.[0] === responseKey
+        ? originalResult.data
+        : originalResult.data[responseKey],
       originalResult.errors == null ? [] : originalResult.errors,
       info ? responsePathAsArray(info.path) : undefined,
       onLocatedError

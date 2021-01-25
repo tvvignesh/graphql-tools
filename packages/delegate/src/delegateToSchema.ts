@@ -11,7 +11,6 @@ import {
   GraphQLOutputType,
   GraphQLObjectType,
   GraphQLResolveInfo,
-  responsePathAsArray,
 } from 'graphql';
 
 import isPromise from 'is-promise';
@@ -208,10 +207,7 @@ function handleExecutionResult(
   resultTransformer: (originalResult: ExecutionResult) => any
 ): any {
   if (isAsyncIterable(executionResult)) {
-    const { info } = delegationContext;
-
-    const initialResultDepth = info ? responsePathAsArray(info.path).length - 1 : 0;
-    const receiver = new Receiver(executionResult, resultTransformer, initialResultDepth);
+    const receiver = new Receiver(executionResult, delegationContext, resultTransformer);
 
     delegationContext.receiver = receiver;
 

@@ -1,27 +1,42 @@
-import { ExecutionResult } from 'graphql';
+import { ExecutionPatchResult, ExecutionResult, GraphQLResolveInfo, GraphQLSchema, responsePathAsArray } from 'graphql';
 
-import { AsyncExecutionResult, ExecutionPatchResult, mergeDeep } from '@graphql-tools/utils';
+import { AsyncExecutionResult } from '@graphql-tools/utils';
+import { InMemoryPubSub } from '@graphql-tools/pubsub';
 
-import { InMemoryChannel } from '@graphql-tools/pubsub';
+import { DelegationContext, ExternalObject, SubschemaConfig } from './types';
+import { getUnpathedErrors } from './externalObjects';
+import { resolveExternalValue } from './resolveExternalValue';
 
 export class Receiver {
   private readonly asyncIterable: AsyncIterable<AsyncExecutionResult>;
+  private readonly fieldName: string;
+  private readonly subschema: GraphQLSchema | SubschemaConfig;
+  private readonly context: Record<string, any>;
   private readonly resultTransformer: (originalResult: ExecutionResult) => any;
   private readonly initialResultDepth: number;
-  private readonly channel: InMemoryChannel<ExecutionPatchResult>;
-  private result: any;
+  private readonly pubsub: InMemoryPubSub<ExternalObject>;
+  private parents: Record<string, Array<ExternalObject>>;
   private iterating: boolean;
   private numRequests: number;
 
   constructor(
     asyncIterable: AsyncIterable<AsyncExecutionResult>,
-    resultTransformer: (originalResult: ExecutionResult) => any,
-    initialResultDepth: number
+    delegationContext: DelegationContext,
+    resultTransformer: (originalResult: ExecutionResult) => any
   ) {
     this.asyncIterable = asyncIterable;
+
+    const { fieldName, subschema, context, info } = delegationContext;
+
+    this.fieldName = fieldName;
+    this.subschema = subschema;
+    this.context = context;
+
     this.resultTransformer = resultTransformer;
-    this.initialResultDepth = initialResultDepth;
-    this.channel = new InMemoryChannel();
+    this.initialResultDepth = info ? responsePathAsArray(info.path).length - 1 : 0;
+    this.parents = Object.create(null);
+    this.pubsub = new InMemoryPubSub();
+
     this.iterating = false;
     this.numRequests = 0;
   }
@@ -30,32 +45,47 @@ export class Receiver {
     const asyncIterator = this.asyncIterable[Symbol.asyncIterator]();
     const payload = await asyncIterator.next();
     const transformedResult = this.resultTransformer(payload.value);
-    this.result = transformedResult;
     return transformedResult;
   }
 
-  public async request(requestedPath: Array<string | number>): Promise<any> {
-    const data = getDataAtPath(this.result, requestedPath.slice(this.initialResultDepth));
-    if (data !== undefined) {
-      return data;
+  public async request(info: GraphQLResolveInfo): Promise<any> {
+    const pathArray = responsePathAsArray(info.path).slice(this.initialResultDepth);
+    const responseKey = pathArray.pop() as string;
+    const path = pathArray.join('.');
+
+    const parents = this.parents[path];
+    if (parents !== undefined) {
+      for (const parent of parents) {
+        const data = parent[responseKey];
+        if (data !== undefined) {
+          const unpathedErrors = getUnpathedErrors(parent);
+          return resolveExternalValue(data, unpathedErrors, this.subschema, this.context, info, this);
+        }
+      }
     }
 
-    const asyncIterable = this._subscribe();
+    const asyncIterable = this.pubsub.subscribe(path);
 
     this.numRequests++;
     if (!this.iterating) {
-      setImmediate(() => this._iterate());
+      this._iterate();
     }
 
-    return this._reduce(asyncIterable, requestedPath);
+    return this._reduce(asyncIterable, responseKey, info);
   }
 
-  private _publish(asyncResult: ExecutionPatchResult): void {
-    return this.channel.publish(asyncResult);
-  }
-
-  private _subscribe(): AsyncIterableIterator<ExecutionPatchResult> {
-    return this.channel.subscribe();
+  private async _reduce(
+    asyncIterable: AsyncIterableIterator<ExternalObject>,
+    responseKey: string,
+    info: GraphQLResolveInfo
+  ): Promise<any> {
+    for await (const parent of asyncIterable) {
+      const data = parent[responseKey];
+      if (data !== undefined) {
+        const unpathedErrors = getUnpathedErrors(parent);
+        return resolveExternalValue(data, unpathedErrors, this.subschema, this.context, info, this);
+      }
+    }
   }
 
   private async _iterate(): Promise<void> {
@@ -63,58 +93,15 @@ export class Receiver {
 
     let hasNext = true;
     while (hasNext && this.numRequests) {
-      const payload = await iterator.next();
+      const payload = (await iterator.next()) as IteratorResult<ExecutionPatchResult, ExecutionPatchResult>;
 
       hasNext = !payload.done;
       const asyncResult = payload.value;
 
-      if (asyncResult != null && isPatchResultWithData(asyncResult)) {
+      if (asyncResult != null && asyncResult.path?.[0] === this.fieldName) {
         const transformedResult = this.resultTransformer(asyncResult);
-        updateObjectWithPatch(this.result, asyncResult.path, transformedResult);
-        this._publish(asyncResult);
+        this.pubsub.publish(asyncResult.path.join('.'), transformedResult);
       }
     }
-  }
-
-  private async _reduce(
-    asyncIterable: AsyncIterableIterator<ExecutionPatchResult>,
-    requestedPath: Array<string | number>
-  ): Promise<any> {
-    for await (const patchResult of asyncIterable) {
-      const receivedPath = patchResult.path;
-      const receivedPathLength = receivedPath.length;
-
-      if (receivedPathLength > requestedPath.length) {
-        continue;
-      }
-
-      if (receivedPath.every((value, index) => value === requestedPath[index])) {
-        this.numRequests--;
-        return getDataAtPath(patchResult.data, requestedPath.slice(receivedPathLength));
-      }
-    }
-  }
-}
-
-function getDataAtPath(object: any, path: ReadonlyArray<string | number>): any {
-  const pathSegment = path[0];
-  const data = object[pathSegment];
-  if (path.length === 1 || data == null) {
-    return data;
-  } else {
-    getDataAtPath(data, path.slice(1));
-  }
-}
-
-function isPatchResultWithData(result: AsyncExecutionResult): result is ExecutionPatchResult {
-  return (result as ExecutionPatchResult).path != null;
-}
-
-function updateObjectWithPatch(object: any, path: ReadonlyArray<string | number>, patch: Record<string, any>) {
-  const pathSegment = path[0];
-  if (path.length === 1) {
-    mergeDeep(object[pathSegment], patch);
-  } else {
-    updateObjectWithPatch(object[pathSegment], path.slice(1), patch);
   }
 }

@@ -1,4 +1,4 @@
-import { defaultFieldResolver, GraphQLResolveInfo, responsePathAsArray } from 'graphql';
+import { defaultFieldResolver, GraphQLResolveInfo } from 'graphql';
 
 import { getResponseKeyFromInfo } from '@graphql-tools/utils';
 
@@ -10,7 +10,8 @@ import { ExternalObject } from './types';
  * Resolver that knows how to:
  * a) handle aliases for proxied schemas
  * b) handle errors from proxied schemas
- * c) handle external to internal enum coversion
+ * c) handle external to internal enum/scalar coversion
+ * d) handle type merging
  */
 export function defaultMergedResolver(
   parent: ExternalObject,
@@ -31,15 +32,13 @@ export function defaultMergedResolver(
   }
 
   const data = parent[responseKey];
-  const unpathedErrors = getUnpathedErrors(parent);
   const subschema = getSubschema(parent, responseKey);
   const receiver = getReceiver(parent, subschema);
 
   if (data === undefined && receiver !== undefined) {
-    return receiver
-      .request(responsePathAsArray(info.path))
-      .then(patchData => resolveExternalValue(patchData, unpathedErrors, subschema, context, info, receiver));
+    return receiver.request(info);
   }
 
+  const unpathedErrors = getUnpathedErrors(parent);
   return resolveExternalValue(data, unpathedErrors, subschema, context, info, receiver);
 }
