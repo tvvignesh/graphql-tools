@@ -101,6 +101,10 @@ export class Receiver {
       if (asyncResult != null && asyncResult.path?.[0] === this.fieldName) {
         const transformedResult = this.resultTransformer(asyncResult);
         this.pubsub.publish(asyncResult.path.join('.'), transformedResult);
+
+        // TODO:
+        // add payload to parents in case a later request comes in looking for payload we just consumed
+        // handle adding lists (or lists of lists) to parents
       }
     }
   }
