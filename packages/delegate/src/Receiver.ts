@@ -15,7 +15,7 @@ export class Receiver {
   private readonly resultTransformer: (originalResult: ExecutionResult) => any;
   private readonly initialResultDepth: number;
   private readonly pubsub: InMemoryPubSub<ExternalObject>;
-  private parents: Record<string, Array<ExternalObject>>;
+  private patches: Record<string, Array<any>>;
   private iterating: boolean;
   private numRequests: number;
 
@@ -34,7 +34,7 @@ export class Receiver {
 
     this.resultTransformer = resultTransformer;
     this.initialResultDepth = info ? responsePathAsArray(info.path).length - 1 : 0;
-    this.parents = Object.create(null);
+    this.patches = Object.create(null);
     this.pubsub = new InMemoryPubSub();
 
     this.iterating = false;
@@ -49,22 +49,95 @@ export class Receiver {
   }
 
   public async request(info: GraphQLResolveInfo): Promise<any> {
+    // Problem!
+    //
+    // @defer allows multiple patches at the same path with different sets of fields
+    //
+    // let's say we have a query like this:
+    //
+    // query {
+    //   object {
+    //     ... on Object @defer {
+    //       field {
+    //         subfield1
+    //       }
+    //     }
+    //     ... on Object @defer {
+    //       field {
+    //         subfield2
+    //       }
+    //     }
+    //   }
+    // }
+    //
+    // defaultMergeResolver will...
+    //
+    // (1) resolve 'object' as an empty ExternalObject value with a receiver
+    // (2) resolve 'field' by calling 'receiver.request(...)' for field which will
+    //     be fulfilled with whichever patch comes back first, let's say the first
+    //     'field' patch containing 'subfield1'
+    // (3) resolve 'subfield1' by its presence within that patch
+    // (4) resolve 'subfield2' by calling 'receiver.request(...)' for subfield2
+    //
+    // With (4) being tricky! 'subfield2' is not the path that was returned by the patch,
+    // ('object'), nor a subfield of that path ('field'), it's a field that could
+    // theoretically be anywhere in the tree (because the problem could be even more nested).
+    //
+    // So that means you can't just subscribe to the path you want, you have to subscribe to
+    // every parent of that path, and also check if the descendant is within that patch.
+    //
+    // But then the problem is that `resolveExternalValue` was not called level by level
+    // for these 'orphaned patches' and so you will have to do that as well, which
+    // requires knowing the type of every field in the execution tree.
+    //
+    // Taking a step back, the problem is that defer does not just defer -- it creates
+    // a new branch of execution. We have no way (yet?) within our schema of mapping
+    // the current branch of execution to the returning proxied branch of execution
+    // and so are trying to elide that requirement by just merging together the different
+    // proxied results as they come in.
+    //
+    // =======
+    // An idea
+    // =======
+    //
+    // Perhaps we could modify the above as follows:
+    // (1) resolve 'object' as an empty ExternalObject value with a receiver
+    // (2) resolve 'field' by calling 'receiver.request(...)' for field which will
+    //     be fulfilled with whichever patch comes back first, let's say the first
+    //     'field' patch containing 'subfield1', store the fact that 'object.field'
+    //     was already resolved using `resolveExternalValue`.
+    // (3) resolve 'subfield1' by its presence within that patch
+    // (4) resolve 'subfield2' by calling 'receiver.request(...)' for subfield2
+    // (5) meanwhile, 'receiver._iterate()' can access the store and note that subsequent
+    //     patches for 'field' should automatically be resolved using `resolveExternalValue`
+    //     with the same parameters as the first call, with the values for the subfields
+    //     published out instead of the fields
+    //
+    // ==========
+    // What if...
+    // ==========
+    //
+    // ...the field type is a list of SubType objects and not a single SubType object?
+    //
+    // It seemms that we just need to modify (5) to recursively go through the list or list
+    // of lists and publish out each individual object.
+
     const pathArray = responsePathAsArray(info.path).slice(this.initialResultDepth);
     const responseKey = pathArray.pop() as string;
-    const path = pathArray.join('.');
+    const pathKey = pathArray.join('.');
 
-    const parents = this.parents[path];
-    if (parents !== undefined) {
-      for (const parent of parents) {
-        const data = parent[responseKey];
+    const patches = this.patches[pathKey];
+    if (patches !== undefined) {
+      for (const patch of patches) {
+        const data = patch[responseKey];
         if (data !== undefined) {
-          const unpathedErrors = getUnpathedErrors(parent);
+          const unpathedErrors = getUnpathedErrors(patch);
           return resolveExternalValue(data, unpathedErrors, this.subschema, this.context, info, this);
         }
       }
     }
 
-    const asyncIterable = this.pubsub.subscribe(path);
+    const asyncIterable = this.pubsub.subscribe(pathKey);
 
     this.numRequests++;
     if (!this.iterating) {
@@ -100,11 +173,14 @@ export class Receiver {
 
       if (asyncResult != null && asyncResult.path?.[0] === this.fieldName) {
         const transformedResult = this.resultTransformer(asyncResult);
-        this.pubsub.publish(asyncResult.path.join('.'), transformedResult);
-
-        // TODO:
-        // add payload to parents in case a later request comes in looking for payload we just consumed
-        // handle adding lists (or lists of lists) to parents
+        const pathKey = asyncResult.path.join('.');
+        this.pubsub.publish(pathKey, transformedResult);
+        const patches = this.patches[pathKey];
+        if (patches == null) {
+          this.patches[pathKey] = transformedResult;
+        } else {
+          this.patches[pathKey].push(transformedResult);
+        }
       }
     }
   }
