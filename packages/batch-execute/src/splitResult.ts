@@ -5,7 +5,7 @@ import { ExecutionResult, GraphQLError } from 'graphql';
 import isPromise from 'is-promise';
 
 import { AsyncExecutionResult, isAsyncIterable, relocatedError } from '@graphql-tools/utils';
-import { InMemoryChannel } from '@graphql-tools/pubsub';
+import { split } from '@graphql-tools/pubsub';
 
 import { parseKey } from './prefix';
 
@@ -33,31 +33,15 @@ export function splitResult(
   return splitExecutionResultOrAsyncIterableIterator(mergedResult, numResults);
 }
 
-async function iterate(
-  mergedResult: AsyncIterableIterator<AsyncExecutionResult>,
-  channel: InMemoryChannel<AsyncExecutionResult>
-): Promise<void> {
-  for await (const asyncResult of mergedResult) {
-    channel.publish(asyncResult);
-  }
-}
-
 export function splitExecutionResultOrAsyncIterableIterator(
   mergedResult: ExecutionResult | AsyncIterableIterator<AsyncExecutionResult>,
   numResults: number
 ): Array<ExecutionResult | AsyncIterableIterator<AsyncExecutionResult>> {
   if (isAsyncIterable(mergedResult)) {
-    const channel = new InMemoryChannel();
-
-    const asyncIterables: Array<AsyncIterableIterator<AsyncExecutionResult>> = [];
-    for (let i = 0; i < numResults; i++) {
-      // TODO: add filter and map functionality
-      asyncIterables.push(channel.subscribe());
-    }
-
-    setImmediate(() => iterate(mergedResult, channel));
-
-    return asyncIterables;
+    return split(mergedResult, numResults, originalResult => {
+      // TODO: implement splitter instead of this placeholder
+      return [0, originalResult];
+    });
   }
 
   return splitExecutionResult(mergedResult, numResults);
