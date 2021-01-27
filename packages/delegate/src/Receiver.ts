@@ -106,10 +106,13 @@ export class Receiver {
     //     be fulfilled with whichever patch comes back first, let's say the first
     //     'field' patch containing 'subfield1', store the fact that 'object.field'
     //     was already resolved using `resolveExternalValue`.
-    // (3) resolve 'subfield1' by its presence within that patch
-    // (4) resolve 'subfield2' by calling 'receiver.request(...)' for subfield2
+    // (3) resolve 'subfield1' EVEN THOUGH IT IS WITHIN THAT PATCH by calling
+    //     'receiver.request' for subfield1, so that we can store the fact that
+    //     field.subfield1 has been resolved using 'resolveExternalValue'
+    // (4) resolve 'subfield2' by calling 'receiver.request(...)' for subfield2,
+    //     which is really the only option, because it is not within that patch.
     // (5) meanwhile, 'receiver._iterate()' can access the store and note that subsequent
-    //     patches for 'field' should automatically be resolved using `resolveExternalValue`
+    //     patches for 'field', etc, should automatically be resolved using `resolveExternalValue`
     //     with the same parameters as the first call, with the values for the subfields
     //     published out instead of the fields
     //
