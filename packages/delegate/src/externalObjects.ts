@@ -46,7 +46,7 @@ export function getReceiver(object: ExternalObject, subschema: GraphQLSchema | S
 
 export function mergeExternalObjects(
   schema: GraphQLSchema,
-  path: Array<string | number>,
+  path: ReadonlyArray<string | number>,
   typeName: string,
   target: ExternalObject,
   sources: Array<ExternalObject>,

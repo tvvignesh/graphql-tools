@@ -44,6 +44,33 @@ export default class StoreDeferredSelectionSets implements Transform {
     });
 
     return visit(document, {
+      // TO DO:
+      // the need for the __typename within any selection set that contains deferred fragments
+      // further argues in favor of adding __typename once to every field instead of via this method.
+      // see https://github.com/ardatan/graphql-tools/pull/2225
+      [Kind.SELECTION_SET]: node => {
+        if (
+          node.selections.some(
+            selection =>
+              (selection.kind === Kind.INLINE_FRAGMENT || selection.kind === Kind.FRAGMENT_SPREAD) &&
+              selection.directives?.some(directive => directive.name.value === 'defer')
+          )
+        ) {
+          return {
+            ...node,
+            selections: [
+              ...node.selections,
+              {
+                kind: Kind.FIELD,
+                name: {
+                  kind: Kind.NAME,
+                  value: '__typename',
+                },
+              },
+            ],
+          };
+        }
+      },
       [Kind.INLINE_FRAGMENT]: node => {
         const newNode = transformFragmentNode(node, this.labelNumber);
 
@@ -51,7 +78,7 @@ export default class StoreDeferredSelectionSets implements Transform {
           return;
         }
 
-        deferredSelectionSets[this.labelNumber] = filterSelectionSet(node.selectionSet);
+        deferredSelectionSets[`label_${this.labelNumber}`] = filterSelectionSet(node.selectionSet);
 
         this.labelNumber++;
 
@@ -101,7 +128,7 @@ function transformFragmentNode<T extends InlineFragmentNode | FragmentSpreadNode
   if (labelIndex === undefined) {
     newDefer = {
       ...defer,
-      arguments: [],
+      arguments: [newLabel],
     };
   } else if (labelIndex === -1) {
     newDefer = {
@@ -109,15 +136,20 @@ function transformFragmentNode<T extends InlineFragmentNode | FragmentSpreadNode
       arguments: [...args, newLabel],
     };
   } else {
+    const newArgs = args.slice();
+    newArgs.splice(labelIndex, 1, newLabel);
     newDefer = {
       ...defer,
-      arguments: args.slice().splice(labelIndex, 1, newLabel),
+      arguments: newArgs,
     };
   }
 
+  const newDirectives = node.directives.slice();
+  newDirectives.splice(deferIndex, 1, newDefer);
+
   return {
     ...node,
-    directives: node.directives.slice().splice(deferIndex, 1, newDefer),
+    directives: newDirectives,
   };
 }
 

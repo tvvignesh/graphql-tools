@@ -11,7 +11,7 @@ import { AsyncExecutionResult } from '@graphql-tools/utils';
 import { InMemoryPubSub } from '@graphql-tools/pubsub';
 
 import { DelegationContext, ExternalObject, SubschemaConfig } from './types';
-import { getUnpathedErrors } from './externalObjects';
+import { getUnpathedErrors, mergeExternalObjects } from './externalObjects';
 import { resolveExternalValue } from './resolveExternalValue';
 
 export class Receiver {
@@ -19,11 +19,12 @@ export class Receiver {
   private readonly fieldName: string;
   private readonly subschema: GraphQLSchema | SubschemaConfig;
   private readonly context: Record<string, any>;
+  private readonly info: GraphQLResolveInfo;
   private readonly deferredSelectionSets: Record<string, SelectionSetNode>;
   private readonly resultTransformer: (originalResult: ExecutionResult) => any;
   private readonly initialResultDepth: number;
   private readonly pubsub: InMemoryPubSub<ExternalObject>;
-  private patches: Record<string, Array<any>>;
+  private externalValues: Record<string, any>;
   private iterating: boolean;
   private numRequests: number;
 
@@ -39,11 +40,12 @@ export class Receiver {
     this.fieldName = fieldName;
     this.subschema = subschema;
     this.context = context;
+    this.info = info;
     this.deferredSelectionSets = deferredSelectionSets;
 
     this.resultTransformer = resultTransformer;
     this.initialResultDepth = info ? responsePathAsArray(info.path).length - 1 : 0;
-    this.patches = Object.create(null);
+    this.externalValues = Object.create(null);
     this.pubsub = new InMemoryPubSub();
 
     this.iterating = false;
@@ -138,12 +140,13 @@ export class Receiver {
     const responseKey = pathArray.pop() as string;
     const pathKey = pathArray.join('.');
 
-    const patches = this.patches[pathKey];
-    if (patches !== undefined) {
-      for (const patch of patches) {
-        const data = patch[responseKey];
+    const externalValue = this.externalValues[pathKey];
+    if (externalValue != null) {
+      const object = getValue(externalValue, pathArray);
+      if (object !== undefined) {
+        const data = object[responseKey];
         if (data !== undefined) {
-          const unpathedErrors = getUnpathedErrors(patch);
+          const unpathedErrors = getUnpathedErrors(object);
           return resolveExternalValue(data, unpathedErrors, this.subschema, this.context, info, this);
         }
       }
@@ -183,32 +186,35 @@ export class Receiver {
       hasNext = !payload.done;
       const asyncResult = payload.value;
 
-      if (asyncResult != null && asyncResult.path?.[0] === this.fieldName) {
+      if (asyncResult != null && asyncResult.label !== undefined && asyncResult.path?.[0] === this.fieldName) {
         const transformedResult = this.resultTransformer(asyncResult);
         const pathKey = asyncResult.path.join('.');
         this.pubsub.publish(pathKey, transformedResult);
-        const patches = this.patches[pathKey];
-        if (patches == null) {
-          this.patches[pathKey] = transformedResult;
+        const externalValue = this.externalValues[pathKey];
+        if (externalValue != null) {
+          this.externalValues[pathKey] = mergeExternalObjects(
+            this.info.schema,
+            // TODO: is this the right path to pass to mergeExternalObjects?
+            asyncResult.path,
+            transformedResult.__typename,
+            externalValue,
+            [transformedResult],
+            [this.deferredSelectionSets[asyncResult.label]]
+          );
         } else {
-          // TODO:
-          //
-          // AS NEXT PLANNED STEP:
-          //
-          // Now that we have the stored deferredSelectionSets,
-          // instead of keeping an array of patches received at a particular pathKey,
-          // we can keep a single object with the merged result at that path
-          // using mergeExternalObjects
-          //
-          // one wrinkle is that the stored deferredSeletionSet is not (yet?) filtered,
-          // and may contain fields that are not within the delegated schema. It remains
-          // to be seen whether these "extra" fields need to be explicitly filtered from
-          // the result, which is somewhat repetitive/cumbersome to actually do. Hopefully
-          // it will not be acutally required.
-          //
-          this.patches[pathKey].push(transformedResult);
+          this.externalValues[pathKey] = transformedResult;
         }
       }
     }
+  }
+}
+
+function getValue(object: any, path: ReadonlyArray<string | number>): any {
+  const pathSegment = path[0];
+  const data = object[pathSegment];
+  if (path.length === 1 || data == null) {
+    return data;
+  } else {
+    getValue(data, path.slice(1));
   }
 }
