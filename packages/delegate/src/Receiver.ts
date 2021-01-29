@@ -1,4 +1,11 @@
-import { ExecutionPatchResult, ExecutionResult, GraphQLResolveInfo, GraphQLSchema, responsePathAsArray } from 'graphql';
+import {
+  ExecutionPatchResult,
+  ExecutionResult,
+  GraphQLResolveInfo,
+  GraphQLSchema,
+  SelectionSetNode,
+  responsePathAsArray,
+} from 'graphql';
 
 import { AsyncExecutionResult } from '@graphql-tools/utils';
 import { InMemoryPubSub } from '@graphql-tools/pubsub';
@@ -12,6 +19,7 @@ export class Receiver {
   private readonly fieldName: string;
   private readonly subschema: GraphQLSchema | SubschemaConfig;
   private readonly context: Record<string, any>;
+  private readonly deferredSelectionSets: Record<string, SelectionSetNode>;
   private readonly resultTransformer: (originalResult: ExecutionResult) => any;
   private readonly initialResultDepth: number;
   private readonly pubsub: InMemoryPubSub<ExternalObject>;
@@ -26,11 +34,12 @@ export class Receiver {
   ) {
     this.asyncIterable = asyncIterable;
 
-    const { fieldName, subschema, context, info } = delegationContext;
+    const { fieldName, subschema, context, info, deferredSelectionSets } = delegationContext;
 
     this.fieldName = fieldName;
     this.subschema = subschema;
     this.context = context;
+    this.deferredSelectionSets = deferredSelectionSets;
 
     this.resultTransformer = resultTransformer;
     this.initialResultDepth = info ? responsePathAsArray(info.path).length - 1 : 0;

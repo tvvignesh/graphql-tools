@@ -141,6 +141,7 @@ export function delegateRequest({
     transforms: allTransforms,
     transformedSchema: transformedSchema ?? (subschemaConfig as Subschema)?.transformedSchema ?? targetSchema,
     skipTypeMerging,
+    deferredSelectionSets: Object.create(null),
   };
 
   const transformer = new Transformer(delegationContext, binding);
