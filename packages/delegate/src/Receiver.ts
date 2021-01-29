@@ -191,6 +191,21 @@ export class Receiver {
         if (patches == null) {
           this.patches[pathKey] = transformedResult;
         } else {
+          // TODO:
+          //
+          // AS NEXT PLANNED STEP:
+          //
+          // Now that we have the stored deferredSelectionSets,
+          // instead of keeping an array of patches received at a particular pathKey,
+          // we can keep a single object with the merged result at that path
+          // using mergeExternalObjects
+          //
+          // one wrinkle is that the stored deferredSeletionSet is not (yet?) filtered,
+          // and may contain fields that are not within the delegated schema. It remains
+          // to be seen whether these "extra" fields need to be explicitly filtered from
+          // the result, which is somewhat repetitive/cumbersome to actually do. Hopefully
+          // it will not be acutally required.
+          //
           this.patches[pathKey].push(transformedResult);
         }
       }
