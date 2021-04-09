@@ -25,10 +25,13 @@ import { IStitchSchemasOptions, SubschemaConfigTransform } from './types';
 
 import { buildTypeCandidates, buildTypes } from './typeCandidates';
 import { createStitchingInfo, completeStitchingInfo, addStitchingInfo } from './stitchingInfo';
-import { isolateComputedFields } from './isolateComputedFields';
-import { defaultSubschemaConfigTransforms } from './subschemaConfigTransforms';
+import {
+  defaultSubschemaConfigTransforms,
+  isolateComputedFieldsTransformer,
+  splitMergedTypeEntryPointsTransformer,
+} from './subschemaConfigTransforms';
 
-export function stitchSchemas({
+export function stitchSchemas<TContext = Record<string, any>>({
   subschemas = [],
   types = [],
   typeDefs,
@@ -48,14 +51,14 @@ export function stitchSchemas({
   parseOptions = {},
   pruningOptions,
   updateResolversInPlace,
-}: IStitchSchemasOptions): GraphQLSchema {
+}: IStitchSchemasOptions<TContext>): GraphQLSchema {
   if (typeof resolverValidationOptions !== 'object') {
     throw new Error('Expected `resolverValidationOptions` to be an object');
   }
 
   let transformedSubschemas: Array<Subschema> = [];
-  const subschemaMap: Map<GraphQLSchema | SubschemaConfig, Subschema> = new Map();
-  const originalSubschemaMap: Map<Subschema, GraphQLSchema | SubschemaConfig> = new Map();
+  const subschemaMap: Map<GraphQLSchema | SubschemaConfig<any, any, any, TContext>, Subschema> = new Map();
+  const originalSubschemaMap: Map<Subschema, GraphQLSchema | SubschemaConfig<any, any, any, TContext>> = new Map();
 
   subschemas.forEach(subschemaOrSubschemaArray => {
     if (Array.isArray(subschemaOrSubschemaArray)) {
@@ -192,23 +195,37 @@ export function stitchSchemas({
   return schema;
 }
 
-function applySubschemaConfigTransforms(
-  subschemaConfigTransforms: Array<SubschemaConfigTransform>,
-  subschemaOrSubschemaConfig: GraphQLSchema | SubschemaConfig,
+const subschemaConfigTransformerPresets = [isolateComputedFieldsTransformer, splitMergedTypeEntryPointsTransformer];
+
+function applySubschemaConfigTransforms<TContext = Record<string, any>>(
+  subschemaConfigTransforms: Array<SubschemaConfigTransform<TContext>>,
+  subschemaOrSubschemaConfig: GraphQLSchema | SubschemaConfig<any, any, any, TContext>,
   subschemaMap: Map<GraphQLSchema | SubschemaConfig, Subschema>,
-  originalSubschemaMap: Map<Subschema, GraphQLSchema | SubschemaConfig>
+  originalSubschemaMap: Map<Subschema, GraphQLSchema | SubschemaConfig<any, any, any, TContext>>
 ): Array<Subschema> {
   const subschemaConfig = isSubschemaConfig(subschemaOrSubschemaConfig)
     ? subschemaOrSubschemaConfig
     : { schema: subschemaOrSubschemaConfig };
 
-  const newSubschemaConfig = subschemaConfigTransforms.reduce((acc, subschemaConfigTransform) => {
-    return subschemaConfigTransform(acc);
-  }, subschemaConfig);
+  let transformedSubschemaConfigs: Array<SubschemaConfig> = [subschemaConfig];
+  subschemaConfigTransforms.concat(subschemaConfigTransformerPresets).forEach(subschemaConfigTransform => {
+    const mapped: Array<SubschemaConfig | Array<SubschemaConfig>> = transformedSubschemaConfigs.map(ssConfig =>
+      subschemaConfigTransform(ssConfig)
+    );
 
-  const transformedSubschemas = isolateComputedFields(newSubschemaConfig).map(
-    subschemaConfig => new Subschema(subschemaConfig)
-  );
+    transformedSubschemaConfigs = mapped.reduce(
+      (acc: Array<SubschemaConfig>, configOrList: SubschemaConfig | Array<SubschemaConfig>) => {
+        if (Array.isArray(configOrList)) {
+          return acc.concat(configOrList as Array<SubschemaConfig>);
+        }
+        acc.push(configOrList as SubschemaConfig);
+        return acc;
+      },
+      []
+    ) as Array<SubschemaConfig>;
+  });
+
+  const transformedSubschemas = transformedSubschemaConfigs.map(ssConfig => new Subschema(ssConfig));
 
   const baseSubschema = transformedSubschemas[0];
 

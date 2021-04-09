@@ -150,6 +150,8 @@ Post: {
 
 The `selectionSet` specifies the key field(s) needed from an object to query for its associations. For example, `Post.user` will require that a Post provide its `userId`. Rather than relying on incoming queries to manually request this key for the association, the selection set will automatically be included in subschema requests to guarantee that these fields are fetched. Dynamic selection sets are also possible by providing a function that receives a GraphQL `FieldNode` (the gateway field) and returns a `SelectionSetNode`.
 
+Note: As of version 7 of graphql-tools, `fragment` hints are removed in favor of `selectionSet` hints, read more in migration guide.
+
 ### resolve
 
 ```js
@@ -220,7 +222,11 @@ const schema = stitchSchemas({
 });
 ```
 
-Internally, `batchDelegateToSchema` wraps a single `delegateToSchema` call in a [DataLoader](https://www.npmjs.com/package/dataloader) scoped by context, field, arguments, and query selection. It assumes that the delegated operation will return an array of objects matching the gateway field's named GraphQL type (ex: a `User` field delegates to a `[User]` query). If this is not the case, then you should manually provide a `returnType` option citing the expected GraphQL return type.
+Internally, `batchDelegateToSchema` wraps a single `delegateToSchema` call in a [DataLoader](https://www.npmjs.com/package/dataloader) scoped by context, field, arguments, and query selection. It assumes that the delegated operation will return an array of objects matching the gateway field's named GraphQL type (ex: a `User` field delegates to a `[User]` query). If this is not the case, then you should manually provide a `returnType` option citing the expected GraphQL return type. Since it is a thin wrapper around `DataLoader`, it also makes the following assumptions on the results:
+> - The Array of values must be the same length as the Array of keys.
+> - Each index in the Array of values must correspond to the same index in the Array of keys.
+
+If the query you're delegating to doesn't conform to these expectations, you can provide a custom [valuesFromResults](https://www.graphql-tools.com/docs/api/interfaces/batch_delegate_src.createbatchdelegatefnoptions/#valuesfromresults) function to transform it appropriately.
 
 Batch delegation is generally preferable over plain delegation because it eliminates the redundancy of requesting the same field across an array of parent objects. Even so, delegation costs can add up because there is still one subschema request made _per batched field_&mdash;for remote services, this may create many network requests sent to the same service. Consider enabling an additional layer of network-level batching with a package such as [apollo-link-batch-http](https://www.apollographql.com/docs/link/links/batch-http/) to consolidate requests per subschema.
 

@@ -1,5 +1,23 @@
 # @graphql-tools/load-files
 
+## 6.3.2
+
+### Patch Changes
+
+- 7c6e0083: Remove duplicate code
+
+## 6.3.1
+
+### Patch Changes
+
+- 61889f28: fix(load-files): respect ignoredExtensions even if there is a specific file glob
+
+## 6.3.0
+
+### Minor Changes
+
+- efe8b8a9: feat(load-files): ability to provide a custom extractExports
+
 ## 6.2.7
 
 ### Patch Changes

@@ -1,5 +1,39 @@
 # @graphql-tools/utils
 
+## 7.7.1
+
+### Patch Changes
+
+- 194ac370: fix(utils): add createSchemaDefinition again to fix breaking change
+
+## 7.7.0
+
+### Minor Changes
+
+- 58fd4b28: feat(types): add TContext to stitchSchemas and executor
+
+### Patch Changes
+
+- 43da6b59: enhance(merge): reduce number of iterations
+
+## 7.6.0
+
+### Minor Changes
+
+- 5b637e2f: Add generic pruning filter option
+
+## 7.5.2
+
+### Patch Changes
+
+- de16fff4: Fix pruneSchema with unimplemented interfaces
+
+## 7.5.1
+
+### Patch Changes
+
+- 33d1b9e7: Fix pruneSchema with unused interfaces
+
 ## 7.5.0
 
 ### Minor Changes
